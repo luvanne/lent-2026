@@ -21,6 +21,7 @@ import {
 // - 쿨다운 타이머
 // - 전체 리셋 버튼
 // - "오늘의 기도" -> "아멘" 버튼 누르면 스티커 찍힘
+// - AI 사용 제한: 질문 3회, 오늘의 기도 1회 (매일 리셋)
 // ==============================================================================
 
 // 1. Firebase 설정값
@@ -37,6 +38,14 @@ const YOUR_FIREBASE_CONFIG = {
 // --- 환경 설정 ---
 const firebaseConfig = YOUR_FIREBASE_CONFIG;
 const appId = 'lent-2026-flight-v1'; 
+
+const getTodayKey = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 
 // Firebase 초기화
 let app, auth, db;
@@ -213,8 +222,14 @@ const App = () => {
   const [question, setQuestion] = useState("");
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
+  const [aiCounts, setAiCounts] = useState({ prayer: 0, question: 0, lastResetDate: getTodayKey() });
+  const maxPrayer = 1;
+  const maxQuestion = 3;
+  const remainingPrayer = Math.max(0, maxPrayer - aiCounts.prayer);
+  const remainingQuestion = Math.max(0, maxQuestion - aiCounts.question);
+
   const calendarData = [
-    { date: "2/22", text: "오늘은 준비 주일입니다", verse: "야호!", type: "sun", fullVerse: "사순절 여정을 시작하며 마음을 준비하는 주일입니다. 2026년 사순절, 예수님과 함께 하는 비행를 시작해볼까요?" },
+    { date: "2/22", text: "오늘은 말씀여행 준비 주일입니다.", verse: "야호!", type: "sun", fullVerse: "사순절 여정을 시작하며 마음을 준비하는 주일입니다. 2026년 사순절, 예수님과 함께 하는 비행를 시작해볼까요?" },
     { date: "2/23", text: "예수님은 몸과 마음이 자라나셨어요", verse: "눅 2:52", type: "normal", fullVerse: "예수는 지혜와 키가 자라가며 하나님과 사람에게 더욱 사랑스러워 가시더라 (누가복음 2:52)" },
     { date: "2/24", text: "예수님은 사랑을 받으셨어요", verse: "눅 2:52", type: "normal", fullVerse: "예수는 지혜와 키가 자라가며 하나님과 사람에게 더욱 사랑스러워 가시더라 (누가복음 2:52)" },
     { date: "2/25", text: "예수님은 기도로 대화하셨어요", verse: "막 1:35", type: "normal", fullVerse: "새벽 아직도 밝기 전에 예수께서 일어나 나가 한적한 곳으로 가사 거기서 기도하시더니 (마가복음 1:35)" },
@@ -300,6 +315,21 @@ const App = () => {
         const d = snap.data();
         setRevealedDays(d.revealedDays || {});
         setCompletedDays(d.completedDays || {});
+
+        const today = getTodayKey();
+        const incoming = d.aiCounts || {};
+        let nextCounts = {
+          prayer: incoming.prayer || 0,
+          question: incoming.question || 0,
+          lastResetDate: incoming.lastResetDate || today
+        };
+        if (nextCounts.lastResetDate !== today) {
+          nextCounts = { prayer: 0, question: 0, lastResetDate: today };
+          setAiCounts(nextCounts);
+          saveAiCounts(nextCounts);
+        } else {
+          setAiCounts(nextCounts);
+        }
       }
     }, (err) => console.error("데이터 동기화 오류:", err));
 
@@ -330,15 +360,42 @@ const App = () => {
     finally { setTimeout(() => setSyncing(false), 500); }
   };
 
+  const saveAiCounts = async (newCounts) => {
+    if (!user || !db) return;
+    try {
+      const progressRef = doc(db, 'artifacts', appId, 'users', user.uid, 'progress', 'current');
+      await setDoc(progressRef, {
+        aiCounts: newCounts,
+        updatedAt: new Date()
+      }, { merge: true });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const ensureDailyReset = async () => {
+    const today = getTodayKey();
+    if (aiCounts.lastResetDate !== today) {
+      const reset = { prayer: 0, question: 0, lastResetDate: today };
+      setAiCounts(reset);
+      await saveAiCounts(reset);
+      return reset;
+    }
+    return aiCounts;
+  };
+
   const resetAllProgress = async () => {
     if (!window.confirm("전체 진행을 초기화할까요?")) return;
     const empty = {};
+    const resetCounts = { prayer: 0, question: 0, lastResetDate: getTodayKey() };
     setRevealedDays(empty);
     setCompletedDays(empty);
     setSelectedVerse(null);
     setResult(null);
     setPendingCompleteIndex(null);
+    setAiCounts(resetCounts);
     await saveToCloud(empty, empty, false);
+    await saveAiCounts(resetCounts);
   };
 
   const handleDayClick = (index) => {
@@ -399,6 +456,12 @@ const App = () => {
   };
 
   const generatePrayer = async (item, index) => {
+    const counts = await ensureDailyReset();
+    if (counts.prayer >= maxPrayer) {
+      setAlertMessage("오늘의 기도는 하루에 1번만 사용할 수 있어요.");
+      setTimeout(() => setAlertMessage(""), 3000);
+      return;
+    }
     if (cooldownSeconds > 0) {
       setAlertMessage(`AI 대기 ${cooldownSeconds}초 후에 다시 시도해주세요.`);
       setTimeout(() => setAlertMessage(""), 2000);
@@ -409,8 +472,11 @@ const App = () => {
     setLoading(true);
     setResult(null);
     try {
-      const sys = "당신은 주일학교 지혜로운 선생님입니다. 어린이의 눈높이에서 따뜻한 기도문을 3~5문장 이내로 써주세요. '사랑하는 예수님'으로 시작하고 마지막은 '예수님 이름으로 기도합니다. 아멘'으로 끝내주세요.";
+      const sys = "당신은 주일학교 선생님이자 비행기 기장입니다. 어린이의 눈높이에서 따뜻한 기도문을 3~5문장 이내로 써주세요. '사랑하는 승객 예수님'으로 시작하고 마지막은 '아멘'으로 끝내주세요.";
       const res = await fetchGemini(`주제: ${item.text}, 구절: ${item.fullVerse}`, sys);
+      const newCounts = { ...counts, prayer: counts.prayer + 1 };
+      setAiCounts(newCounts);
+      saveAiCounts(newCounts);
       setResult({ type: 'prayer', content: res || "예수님 사랑해요!", title: '✈️ 오늘의 기도' });
     } catch (err) { 
       console.error(err);
@@ -420,6 +486,12 @@ const App = () => {
 
   const askQuestion = async (item) => {
     if (!question.trim()) return;
+    const counts = await ensureDailyReset();
+    if (counts.question >= maxQuestion) {
+      setAlertMessage("질문은 하루에 3번까지만 가능해요.");
+      setTimeout(() => setAlertMessage(""), 3000);
+      return;
+    }
     if (cooldownSeconds > 0) {
       setAlertMessage(`AI 대기 ${cooldownSeconds}초 후에 다시 시도해주세요.`);
       setTimeout(() => setAlertMessage(""), 2000);
@@ -428,8 +500,11 @@ const App = () => {
     setLoadingText("관제탑(AI)에 질문을 전송하고 있습니다...");
     setLoading(true);
     try {
-      const sys = "당신은 지혜로운 주일학교 선생님입니다. 성경 말씀에 충실하게, 어린이의 눈높이에서 친절하고 이해하기 쉽게 4-6문장 이내로 답해주세요.";
+      const sys = "당신은 지혜로운 주일학교 선생님입니다. 성경 말씀에 충실하게, 어린이의 눈높이에서 친절하고 이해하기 쉽게 4문장 이내로 답해주세요.";
       const res = await fetchGemini(`질문: ${question} (묵상 주제: ${item.text})`, sys);
+      const newCounts = { ...counts, question: counts.question + 1 };
+      setAiCounts(newCounts);
+      saveAiCounts(newCounts);
       setResult({ type: 'qa', content: res || "조금 더 고민하고 알려줄게요!", title: '💁‍♀️ 안내 데스크 답변' });
       setQuestion("");
     } catch (err) { 
@@ -458,13 +533,18 @@ const App = () => {
         <h1 className="text-3xl md:text-6xl font-black text-purple-900 mb-3 md:mb-4 drop-shadow-sm tracking-tighter leading-tight">
           사순절 40일 묵상 비행 플랜
         </h1>
-        <div className="flex items-center justify-center gap-2 mb-6 md:mb-8 text-purple-700">
+        <div className="flex items-center justify-center gap-2 mb-4 text-purple-700">
           <Icons.Passport size={20} />
           <p className="text-base md:text-2xl font-bold italic">
             "예수님은 어떤 분이실까?"
           </p>
         </div>
+
+        <div className="text-xs md:text-sm font-bold text-purple-700 mb-6">
+          안내: 오늘의 기도 1회, 질문 3회. 매일 자정 리셋 (남은 횟수: 기도 {remainingPrayer}회 / 질문 {remainingQuestion}회)
+        </div>
         
+        {/* Progress Board */}
         <div className="bg-white rounded-xl md:rounded-2xl p-4 md:p-6 shadow-xl inline-block w-full max-w-2xl border-b-8 border-purple-900 relative overflow-hidden">
           <div className="flex items-center justify-between mb-3 md:mb-4 px-2 md:px-4">
             <span className="text-purple-900 font-extrabold flex items-center gap-2 text-sm md:text-lg">
@@ -475,7 +555,7 @@ const App = () => {
           
           <div className="w-full bg-gray-200 h-4 md:h-6 rounded-full overflow-visible border-2 border-gray-300 relative mb-8 mt-4">
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-full h-[2px] border-t-2 border-dashed border-gray-400/50"></div>
+                <div className="w-full h-[2px] border-t-2 border-dashed border-gray-400/50"></div>
             </div>
             <div className="h-full bg-purple-500 rounded-l-full transition-all duration-1000 ease-out relative" style={{ width: `${progressPercent}%` }}>
               <div className="absolute -right-3 -top-3 md:-top-4 text-purple-700 drop-shadow-xl transform translate-x-1/2 z-10">
@@ -502,7 +582,7 @@ const App = () => {
               </div>
             </div>
           </div>
-
+          
           <div className="absolute top-2 right-4 flex items-center gap-1 text-[9px] font-bold text-green-600">
             {syncing ? <><Icons.Loader2 size={10} className="animate-spin" /> 저장 중...</> : <><Icons.Wifi size={10} /> Online</>}
           </div>
@@ -515,6 +595,7 @@ const App = () => {
         </div>
       </header>
 
+      {/* Grid Layout */}
       <main className="max-w-7xl mx-auto px-1">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3 md:gap-6">
           {calendarData.map((item, index) => {
@@ -539,20 +620,20 @@ const App = () => {
                       {item.date}
                     </div>
                     <div className="mt-2">
-                      <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">대한민국</p>
-                      <p className="text-[6px] md:text-[8px] font-serif tracking-tighter opacity-80 mt-0.5">REPUBLIC OF KOREA</p>
+                        <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">대한민국</p>
+                        <p className="text-[6px] md:text-[8px] font-serif tracking-tighter opacity-80 mt-0.5">REPUBLIC OF KOREA</p>
                     </div>
                     <div className="my-2 opacity-90">
-                      <Icons.KoreaEmblem size={48} className="md:w-[60px] md:h-[60px] text-[#e3c4ff]" />
+                        <Icons.KoreaEmblem size={48} className="md:w-[60px] md:h-[60px] text-[#e3c4ff]" />
                     </div>
                     <div className="mb-2">
-                      <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">여권</p>
-                      <p className="text-[6px] md:text-[8px] font-serif tracking-wider opacity-80 mt-0.5">PASSPORT</p>
+                        <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">여권</p>
+                        <p className="text-[6px] md:text-[8px] font-serif tracking-wider opacity-80 mt-0.5">PASSPORT</p>
                     </div>
                     {!isClickable && (
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <Icons.Lock size={24} className="text-white/70" />
-                      </div>
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <Icons.Lock size={24} className="text-white/70" />
+                        </div>
                     )}
                   </div>
                   <div className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#140b24] opacity-50"></div>
@@ -576,49 +657,44 @@ const App = () => {
                       item.type === 'holy' ? 'bg-purple-800' : 
                       'bg-purple-700'}
                 `}>
-                  <span>VISA</span>
-                  <span>{item.date}</span>
+                    <span>VISA</span>
+                    <span>{item.date}</span>
                 </div>
 
                 <div className="flex-grow p-3 md:p-4 flex flex-col items-center justify-between relative bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')]">
                   <div className="absolute inset-0 flex items-center justify-center opacity-[0.07] pointer-events-none">
-                    <Icons.KoreaEmblem size={120} />
+                      <Icons.KoreaEmblem size={120} />
                   </div>
                   <div className="z-10 text-center w-full mt-1">
-                    <p className="text-xs md:text-base font-black text-slate-800 break-keep leading-tight mb-3 font-serif">
-                      {item.text}
-                    </p>
-                    <div className="w-full h-[1px] bg-gray-300 mb-3 border-t border-gray-200 border-dotted"></div>
-                    <div className="flex flex-col gap-1.5 w-full">
-                      {item.verse && (
-                        <button 
-                          onClick={(e) => openVersePopup(e, item)}
-                          className="w-full bg-white/80 border border-purple-200 text-purple-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-purple-50 font-bold flex items-center justify-center gap-1 backdrop-blur-sm"
-                        >
-                          <Icons.Ticket size={12} /> 탑승권({item.verse})
-                        </button>
-                      )}
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); generatePrayer(item, index); }}
-                        disabled={aiLocked}
-                        className="w-full bg-purple-50/80 border border-purple-200 text-purple-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-purple-100 font-bold flex items-center justify-center gap-1 backdrop-blur-sm disabled:opacity-60"
-                      >
-                        <Icons.Headset size={12} /> 오늘의 기도
-                      </button>
-                      {cooldownSeconds > 0 && (
-                        <div className="text-[9px] text-purple-600 font-bold mt-1">
-                          AI 대기 {cooldownSeconds}s
+                        <p className="text-xs md:text-base font-black text-slate-800 break-keep leading-tight mb-3 font-serif">
+                            {item.text}
+                        </p>
+                        <div className="w-full h-[1px] bg-gray-300 mb-3 border-t border-gray-200 border-dotted"></div>
+                        <div className="flex flex-col gap-1.5 w-full">
+                            {item.verse && (
+                                <button 
+                                onClick={(e) => openVersePopup(e, item)}
+                                className="w-full bg-white/80 border border-purple-200 text-purple-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-purple-50 font-bold flex items-center justify-center gap-1 backdrop-blur-sm"
+                                >
+                                <Icons.Ticket size={12} /> 탑승권({item.verse})
+                                </button>
+                            )}
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); generatePrayer(item, index); }}
+                                disabled={aiLocked}
+                                className="w-full bg-purple-50/80 border border-purple-200 text-purple-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-purple-100 font-bold flex items-center justify-center gap-1 backdrop-blur-sm disabled:opacity-60"
+                            >
+                                <Icons.Headset size={12} /> 오늘의 기도
+                            </button>
                         </div>
-                      )}
                     </div>
-                  </div>
 
                   {isComp && (
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-15deg] border-4 border-double border-purple-600/70 rounded-full px-2 py-2 text-purple-600/70 font-black text-xs md:text-sm uppercase tracking-widest z-20 pointer-events-none animate-in zoom-in duration-300 bg-white/10 backdrop-blur-[1px] w-20 h-20 flex items-center justify-center shadow-sm">
-                      <div className="text-center leading-none">
-                        DEPARTED<br/>
-                        <span className="text-[8px]">{item.date}</span>
-                      </div>
+                        <div className="text-center leading-none">
+                            DEPARTED<br/>
+                            <span className="text-[8px]">{item.date}</span>
+                        </div>
                     </div>
                   )}
                 </div>
@@ -628,6 +704,7 @@ const App = () => {
         </div>
       </main>
 
+      {/* Bible Modal */}
       {selectedVerse && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-[#fdfbf7] rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden border-[10px] border-purple-900 relative">
@@ -635,8 +712,8 @@ const App = () => {
               <div className="flex items-center gap-3">
                 <Icons.Ticket size={24} className="text-purple-300" />
                 <div>
-                  <h3 className="text-sm font-light text-purple-200 uppercase tracking-widest">Boarding Pass</h3>
-                  <h2 className="text-xl font-black">오늘의 말씀</h2>
+                    <h3 className="text-sm font-light text-purple-200 uppercase tracking-widest">Boarding Pass</h3>
+                    <h2 className="text-xl font-black">오늘의 말씀</h2>
                 </div>
               </div>
               <button onClick={() => setSelectedVerse(null)} className="p-1 hover:rotate-90 transition-transform"><Icons.X size={28} /></button>
@@ -670,15 +747,16 @@ const App = () => {
                     {loading ? <Icons.Loader2 className="animate-spin" size={20} /> : "전송"}
                   </button>
                 </div>
-                {cooldownSeconds > 0 && (
-                  <p className="mt-2 text-xs text-purple-600 font-bold">AI 대기 {cooldownSeconds}s</p>
-                )}
+                <p className="mt-2 text-xs text-purple-600 font-bold">
+                  남은 질문 횟수: {remainingQuestion}회
+                </p>
               </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* Result Modal */}
       {result && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden border-8 border-purple-900 transform animate-in zoom-in duration-300">
@@ -687,15 +765,7 @@ const App = () => {
                 <div className="w-3 h-3 rounded-full bg-purple-300 animate-pulse"></div>
                 <h3 className="text-lg font-bold tracking-widest uppercase">{String(result.title)}</h3>
               </div>
-              <button
-                onClick={() => {
-                  setResult(null);
-                  setPendingCompleteIndex(null);
-                }}
-                className="text-purple-200 hover:text-white"
-              >
-                <Icons.X size={24} />
-              </button>
+              <button onClick={() => { setResult(null); setPendingCompleteIndex(null); }} className="text-purple-200 hover:text-white"><Icons.X size={24} /></button>
             </div>
             <div className="p-8 bg-purple-50 text-center">
               <div className="bg-white p-6 rounded-xl border border-purple-100 shadow-sm mb-6 max-h-[300px] overflow-y-auto">
@@ -720,12 +790,13 @@ const App = () => {
         </div>
       )}
 
+      {/* Global Loading Overlay */}
       {loading && !result && (
         <div className="fixed inset-0 z-[200] bg-purple-900/40 backdrop-blur-md flex flex-col items-center justify-center p-6">
           <div className="relative">
             <div className="absolute inset-0 border-4 border-dashed border-white/30 rounded-full animate-[spin_4s_linear_infinite]"></div>
             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-2xl">
-              <Icons.Loader2 size={40} className="text-purple-500 animate-spin" />
+                <Icons.Loader2 size={40} className="text-purple-500 animate-spin" />
             </div>
           </div>
           <p className="mt-8 text-xl font-black text-white drop-shadow-md text-center">
@@ -734,16 +805,17 @@ const App = () => {
         </div>
       )}
 
+      {/* Intro Overlay */}
       {showIntro && (
         <div className="fixed inset-0 z-[110] bg-purple-900/90 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="max-w-md w-full bg-white rounded-3xl overflow-hidden shadow-2xl relative">
             <div className="bg-purple-600 p-8 text-center text-white relative overflow-hidden">
-              <Icons.PlaneTakeoff size={48} className="mx-auto mb-4 relative z-10" />
-              <h2 className="text-2xl font-black relative z-10">환영합니다, 승객 여러분!</h2>
+                <Icons.PlaneTakeoff size={48} className="mx-auto mb-4 relative z-10" />
+                <h2 className="text-2xl font-black relative z-10">환영합니다, 승객 여러분!</h2>
             </div>
             <div className="p-8 pt-2 bg-white text-center">
               <p className="text-gray-600 mb-6 font-bold leading-relaxed">
-                예수님과 함께하는 <span className="text-purple-600">40일간의 말씀 여행</span>을<br/>시작할 준비가 되셨나요?
+                예수님과 함께하는 <span className="text-purple-600">40일간의 천국 여행</span>을<br/>시작할 준비가 되셨나요?
               </p>
               <button 
                 onClick={() => setShowIntro(false)}
@@ -761,11 +833,11 @@ const App = () => {
           <Icons.Printer size={18} />
           <span className="text-[9px] font-bold mt-0.5">티켓 출력</span>
         </button>
-
+        
         <div className="flex flex-col items-center">
           <div className="flex items-center gap-1">
-            <Icons.Stamp size={14} className="text-purple-500" />
-            <span className="text-lg font-black text-purple-900">{completedCount}</span>
+             <Icons.Stamp size={14} className="text-purple-500" />
+             <span className="text-lg font-black text-purple-900">{completedCount}</span>
           </div>
           <span className="text-[9px] font-bold text-gray-400 uppercase">Stamps Collected</span>
         </div>
