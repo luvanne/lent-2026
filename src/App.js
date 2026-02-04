@@ -15,8 +15,8 @@ import {
 } from 'firebase/firestore';
 
 // ==============================================================================
-// [배포 전용 최종 수정 버전 - 모델명 교체] 
-// AI 모델을 안정적인 'gemini-1.5-flash' 정식 버전으로 변경했습니다.
+// [배포 전용 최종 수정 버전 - AI 연결 해결] 
+// AI 안전 필터(Safety Settings)를 해제하여 종교적 내용도 막힘없이 답변하도록 수정했습니다.
 // ==============================================================================
 
 // 1. Firebase 설정값
@@ -40,7 +40,7 @@ const firebaseConfig = YOUR_FIREBASE_CONFIG;
 const apiKey = YOUR_GEMINI_API_KEY; 
 const appId = 'lent-2026-flight-v1'; // 배포용 고유 ID
 
-// Firebase 초기화
+// Firebase 초기화 (안전 장치 추가)
 let app, auth, db;
 try {
   app = initializeApp(firebaseConfig);
@@ -184,7 +184,14 @@ const fetchGemini = async (prompt, systemPrompt = "") => {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
-    systemInstruction: { parts: [{ text: systemPrompt }] }
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    // [추가됨] 안전 필터 해제 설정 (종교적 내용 차단 방지)
+    safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+    ]
   };
 
   let delay = 1000;
@@ -390,8 +397,10 @@ const App = () => {
       const sys = "당신은 어린이를 사랑하는 주일학교 선생님이자 비행기 기장입니다. 3문장 내외로 따뜻한 기도문을 써주세요. '사랑하는 승객 예수님,' 또는 '우리의 기장되신 예수님,'으로 시작하고 '예수님 이름으로 기도합니다, 아멘.'으로 마쳐주세요.";
       const res = await fetchGemini(`주제: ${item.text}, 구절: ${item.fullVerse}`, sys);
       setResult({ type: 'prayer', content: res || "예수님 사랑해요!", title: '✈️ 오늘의 기내 기도' });
-    } catch (err) { setAlertMessage("통신 상태가 좋지 않습니다. 잠시 후 다시 시도해주세요."); }
-    finally { setLoading(false); }
+    } catch (err) { 
+        console.error(err);
+        setAlertMessage(`AI 연결 오류: ${err.message}. 잠시 후 다시 시도해주세요.`); 
+    } finally { setLoading(false); }
   };
 
   const askQuestion = async (item) => {
@@ -403,8 +412,10 @@ const App = () => {
       const res = await fetchGemini(`질문: ${question} (묵상 주제: ${item.text})`, sys);
       setResult({ type: 'qa', content: res || "조금 더 고민하고 알려줄게요!", title: '💁‍♀️ 안내 데스크 답변' });
       setQuestion("");
-    } catch (err) { setAlertMessage("지금은 연결이 어렵습니다."); }
-    finally { setLoading(false); }
+    } catch (err) { 
+        console.error(err);
+        setAlertMessage(`AI 연결 오류: ${err.message}. 잠시 후 다시 시도해주세요.`); 
+    } finally { setLoading(false); }
   };
 
   const completedCount = Object.values(completedDays).filter(Boolean).length;
