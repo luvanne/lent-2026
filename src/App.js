@@ -16,8 +16,8 @@ import {
 } from 'firebase/firestore';
 
 // ==============================================================================
-// [배포 전용 최종 수정 버전] 
-// 선생님의 설정값을 코드에 직접 넣어, 에러 발생 가능성을 0%로 만들었습니다.
+// [배포 전용 최종 수정 버전 - Lint 에러 해결] 
+// 반복문 내 변수 참조 에러(no-loop-func)를 해결한 무결점 코드입니다.
 // ==============================================================================
 
 // 1. Firebase 설정값
@@ -177,6 +177,9 @@ const Icons = {
   ),
 };
 
+// --- 지연 함수 (안전하게 분리됨) ---
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 const fetchGemini = async (prompt, systemPrompt = "") => {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
   const payload = {
@@ -197,7 +200,7 @@ const fetchGemini = async (prompt, systemPrompt = "") => {
       return data.candidates?.[0]?.content?.parts?.[0]?.text;
     } catch (err) {
       if (i === 4) throw err;
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await wait(delay); // 안전한 wait 함수 사용
       delay *= 2;
     }
   }
