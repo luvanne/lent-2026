@@ -31,7 +31,7 @@ export default async function handler(req, res) {
     if (!response.ok) return res.status(500).json({ error: data?.error?.message || "Gemini error" });
 
     let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    text = text.replace("[END]", "").trim();
+    text = text.replace("[O.K.]", "").trim();
     return res.status(200).json({ text });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
