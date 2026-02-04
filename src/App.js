@@ -36,28 +36,45 @@ const YOUR_GEMINI_API_KEY = "AIzaSyCJNyeJcCIW8blSV64SyV8TV3mFqOK3E";
 
 // ==============================================================================
 
-// --- 환경 감지 및 초기화 (수정됨) ---
+// --- 환경 감지 및 초기화 (수정됨: 배포 에러 방지) ---
+// ESLint 오류(no-undef)를 방지하기 위해 window 객체를 통해 전역 변수에 접근합니다.
+
+const getGlobalVariable = (name) => {
+  if (typeof window !== 'undefined' && window[name]) {
+    return window[name];
+  }
+  return undefined;
+};
+
+const canvasConfig = getGlobalVariable('__firebase_config');
+const canvasAppId = getGlobalVariable('__app_id');
+const canvasAuthToken = getGlobalVariable('__initial_auth_token');
+
 // 입력하신 설정값이 있으면 그것을 최우선으로 사용합니다.
 const useUserConfig = YOUR_FIREBASE_CONFIG.apiKey && YOUR_FIREBASE_CONFIG.apiKey !== "API_KEY_HERE";
 
 // Firebase 설정 선택
 const firebaseConfig = useUserConfig 
   ? YOUR_FIREBASE_CONFIG 
-  : (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : undefined);
+  : (canvasConfig ? JSON.parse(canvasConfig) : undefined);
 
 // Gemini API 키 선택
 const apiKey = (useUserConfig && YOUR_GEMINI_API_KEY) ? YOUR_GEMINI_API_KEY : ""; 
 
 // 앱 ID 설정 (본인 DB 사용 시 깔끔한 ID 사용)
-const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'lent-2026-airport-theme';
+const rawAppId = canvasAppId || 'lent-2026-airport-theme';
 const appId = useUserConfig ? 'lent-2026-flight' : rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_');
 
 // Firebase 초기화 (설정이 있을 때만)
 let app, auth, db;
 if (firebaseConfig) {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
+  try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (e) {
+    console.error("Firebase Initialization Error:", e);
+  }
 }
 
 // --- 공항/여행 테마 SVG 아이콘 컴포넌트 ---
@@ -283,8 +300,8 @@ const App = () => {
 
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token && !useUserConfig) {
-          await signInWithCustomToken(auth, __initial_auth_token);
+        if (canvasAuthToken && !useUserConfig) {
+          await signInWithCustomToken(auth, canvasAuthToken);
         } else {
           await signInAnonymously(auth);
         }
