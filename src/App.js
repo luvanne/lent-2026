@@ -16,8 +16,8 @@ import {
 } from 'firebase/firestore';
 
 // ==============================================================================
-// [배포용 안전 코드 적용 완료] 
-// 이 코드를 그대로 복사해서 src/App.js 에 덮어쓰세요.
+// [배포 전용 최종 수정 버전] 
+// 에러를 유발하는 Canvas 코드를 모두 제거하고, 선생님의 설정만 사용합니다.
 // ==============================================================================
 
 // 1. Firebase 설정값
@@ -36,44 +36,19 @@ const YOUR_GEMINI_API_KEY = "AIzaSyCJNyeJcCIW8blSV64SyV8TV3mFqOK3E";
 
 // ==============================================================================
 
-// --- 환경 변수 안전하게 가져오기 (배포 에러 방지 핵심 코드) ---
-const getGlobalVariable = (name) => {
-  if (typeof window !== 'undefined' && window[name]) {
-    return window[name];
-  }
-  return undefined;
-};
-
-// 직접 변수를 쓰지 않고 함수를 통해 가져와서 에러를 피합니다.
-const canvasConfig = getGlobalVariable('__firebase_config');
-const canvasAppId = getGlobalVariable('__app_id');
-const canvasAuthToken = getGlobalVariable('__initial_auth_token');
-
-// 입력하신 설정값이 있으면 그것을 최우선으로 사용합니다.
-const useUserConfig = YOUR_FIREBASE_CONFIG.apiKey && YOUR_FIREBASE_CONFIG.apiKey !== "API_KEY_HERE";
-
-// Firebase 설정 선택
-const firebaseConfig = useUserConfig 
-  ? YOUR_FIREBASE_CONFIG 
-  : (canvasConfig ? JSON.parse(canvasConfig) : undefined);
-
-// Gemini API 키 선택
-const apiKey = (useUserConfig && YOUR_GEMINI_API_KEY) ? YOUR_GEMINI_API_KEY : ""; 
-
-// 앱 ID 설정
-const rawAppId = canvasAppId || 'lent-2026-airport-theme';
-const appId = useUserConfig ? 'lent-2026-flight' : rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_');
+// --- 환경 설정 (배포 전용으로 단순화) ---
+const firebaseConfig = YOUR_FIREBASE_CONFIG;
+const apiKey = YOUR_GEMINI_API_KEY; 
+const appId = 'lent-2026-flight-v1'; // 배포용 고유 ID
 
 // Firebase 초기화
 let app, auth, db;
-if (firebaseConfig) {
-  try {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-  } catch (e) {
-    console.error("Firebase Initialization Error:", e);
-  }
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+} catch (e) {
+  console.error("Firebase Initialization Error:", e);
 }
 
 // --- 아이콘 컴포넌트 ---
@@ -294,11 +269,7 @@ const App = () => {
 
     const initAuth = async () => {
       try {
-        if (canvasAuthToken && !useUserConfig) {
-          await signInWithCustomToken(auth, canvasAuthToken);
-        } else {
-          await signInAnonymously(auth);
-        }
+        await signInAnonymously(auth);
       } catch (err) { console.error("인증 오류:", err); }
     };
     initAuth();
