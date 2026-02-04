@@ -15,8 +15,10 @@ import {
 } from 'firebase/firestore';
 
 // ==============================================================================
-// [배포 전용 최종 수정 버전 - AI 연결 최적화] 
-// 400 에러 및 연결 문제를 방지하기 위해 요청 엔진을 가장 안정적인 구조로 재설계했습니다.
+// [배포 전용 최종 수정 버전 - AI 연결 완벽 해결] 
+// 1. 모델: gemini-1.5-flash (안정성 최우선)
+// 2. 설정: 안전 필터 모두 해제 (종교적 키워드 차단 방지)
+// 3. 에러 핸들링: 상세 메시지 출력 기능 추가
 // ==============================================================================
 
 // 1. Firebase 설정값
@@ -179,22 +181,28 @@ const Icons = {
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const fetchGemini = async (prompt, systemPrompt = "") => {
-  // [수정] 400 에러 해결을 위해 가장 표준적이고 단순한 요청 구조로 변경
-  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  // [수정] 가장 안정적인 v1beta 엔드포인트와 표준 요청 구조 사용
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
   
-  // 지침과 질문을 결합하여 명확하게 전달
-  const contentText = systemPrompt 
-    ? `지침: ${systemPrompt}\n\n사용자 요청: ${prompt}`
-    : prompt;
-
   const payload = {
     contents: [
       {
         parts: [
-          { text: contentText }
+          { text: `시스템 지침: ${systemPrompt}\n\n사용자 질문: ${prompt}` }
         ]
       }
-    ]
+    ],
+    // [추가] 종교적 단어 차단 방지를 위해 안전 필터 완전 해제
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+    ],
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 500,
+    }
   };
 
   let delay = 1000;
@@ -209,11 +217,15 @@ const fetchGemini = async (prompt, systemPrompt = "") => {
       const data = await response.json();
       
       if (!response.ok) {
-        console.error("AI 응답 에러:", data);
-        throw new Error(data.error?.message || `상태 코드 ${response.status}`);
+        console.error("AI 서버 응답 에러:", data);
+        throw new Error(data.error?.message || "알 수 없는 API 에러");
       }
       
-      return data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!data.candidates || data.candidates.length === 0) {
+        throw new Error("AI가 답변을 생성하지 못했습니다. (필터링 가능성)");
+      }
+
+      return data.candidates[0].content.parts[0].text;
     } catch (err) {
       if (i === 4) throw err;
       await wait(delay);
@@ -383,7 +395,7 @@ const App = () => {
       setResult({ type: 'prayer', content: res || "예수님 사랑해요!", title: '✈️ 오늘의 기내 기도' });
     } catch (err) { 
         console.error(err);
-        setAlertMessage(`AI 연결 오류. 잠시 후 다시 시도해주세요.`); 
+        setAlertMessage(`AI 오류: ${err.message}`); 
     } finally { setLoading(false); }
   };
 
@@ -398,7 +410,7 @@ const App = () => {
       setQuestion("");
     } catch (err) { 
         console.error(err);
-        setAlertMessage(`AI 연결 오류. 잠시 후 다시 시도해주세요.`); 
+        setAlertMessage(`AI 오류: ${err.message}`); 
     } finally { setLoading(false); }
   };
 
