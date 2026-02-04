@@ -19,7 +19,6 @@ import {
 // Gemini API 호출은 /api/gemini로 전송 (키는 서버에만 보관)
 // ==============================================================================
 
-// 1. Firebase 설정값
 const YOUR_FIREBASE_CONFIG = {
   apiKey: "AIzaSyBzBMFGGSMbbKJHE1KypFtnCjv7ea4m0eA",
   authDomain: "lent-2026.firebaseapp.com",
@@ -30,11 +29,9 @@ const YOUR_FIREBASE_CONFIG = {
   measurementId: "G-4SCP59GKZ7"
 };
 
-// --- 환경 설정 ---
 const firebaseConfig = YOUR_FIREBASE_CONFIG;
 const appId = 'lent-2026-flight-v1'; 
 
-// Firebase 초기화
 let app, auth, db;
 try {
   app = initializeApp(firebaseConfig);
@@ -197,7 +194,6 @@ const App = () => {
   const [completedDays, setCompletedDays] = useState({});
   const [revealedDays, setRevealedDays] = useState({});
   const [selectedVerse, setSelectedVerse] = useState(null);
-  const [selectedIndex, setSelectedIndex] = useState(null);
   const [showIntro, setShowIntro] = useState(true);
   const [alertMessage, setAlertMessage] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -326,6 +322,20 @@ const App = () => {
     finally { setTimeout(() => setSyncing(false), 500); }
   };
 
+  const handleAiError = (err) => {
+    const msg = String(err?.message || err || "");
+    const match = msg.match(/retry in\s*([0-9.]+)s/i);
+    if (match) {
+      const sec = Math.ceil(parseFloat(match[1]));
+      setCooldownSeconds(sec);
+      setAlertMessage(`AI 쿨다운: ${sec}초 후 다시 시도해주세요.`);
+      setTimeout(() => setAlertMessage(""), 3000);
+    } else {
+      setAlertMessage(`AI 오류: ${msg}`);
+      setTimeout(() => setAlertMessage(""), 3000);
+    }
+  };
+
   const handleDayClick = (index) => {
     if (index > 0 && !completedDays[index - 1]) {
       setAlertMessage(`[탑승 불가] ${calendarData[index-1].date}의 여정을 먼저 마쳐주세요!`);
@@ -348,37 +358,20 @@ const App = () => {
     saveToCloud(nRev, nComp, isNew);
   };
 
-  const resetSelectedDay = () => {
-    if (selectedIndex === null) return;
-    const nRev = { ...revealedDays };
-    const nComp = { ...completedDays };
-    delete nRev[selectedIndex];
-    delete nComp[selectedIndex];
-    setRevealedDays(nRev);
-    setCompletedDays(nComp);
-    saveToCloud(nRev, nComp, false);
-    setSelectedVerse(null);
-    setSelectedIndex(null);
-  };
-
-  const openVersePopup = (e, item, index) => {
+  const openVersePopup = (e, item) => {
     e.stopPropagation();
     setSelectedVerse(item);
-    setSelectedIndex(index);
   };
 
-  const handleAiError = (err) => {
-    const msg = String(err?.message || err || "");
-    const match = msg.match(/retry in\s*([0-9.]+)s/i);
-    if (match) {
-      const sec = Math.ceil(parseFloat(match[1]));
-      setCooldownSeconds(sec);
-      setAlertMessage(`AI 쿨다운: ${sec}초 후 다시 시도해주세요.`);
-      setTimeout(() => setAlertMessage(""), 3000);
-    } else {
-      setAlertMessage(`AI 오류: ${msg}`);
-      setTimeout(() => setAlertMessage(""), 3000);
-    }
+  const resetAllProgress = async () => {
+    if (!user || !db) return;
+    if (!window.confirm("전체 진행을 초기화할까요?")) return;
+    const empty = {};
+    setRevealedDays(empty);
+    setCompletedDays(empty);
+    setSelectedVerse(null);
+    setResult(null);
+    await saveToCloud(empty, empty, false);
   };
 
   const generatePrayer = async (item) => {
@@ -438,7 +431,6 @@ const App = () => {
           </p>
         </div>
         
-        {/* Progress Board */}
         <div className="bg-white rounded-xl md:rounded-2xl p-4 md:p-6 shadow-xl inline-block w-full max-w-2xl border-b-8 border-purple-900 relative overflow-hidden">
           <div className="flex items-center justify-between mb-3 md:mb-4 px-2 md:px-4">
             <span className="text-purple-900 font-extrabold flex items-center gap-2 text-sm md:text-lg">
@@ -510,21 +502,17 @@ const App = () => {
                     <div className="absolute top-2 right-2 bg-[#d8c2ff] text-[#4b2c70] text-[9px] md:text-[10px] font-black px-1.5 py-0.5 rounded">
                       {item.date}
                     </div>
-
                     <div className="mt-2">
                         <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">대한민국</p>
                         <p className="text-[6px] md:text-[8px] font-serif tracking-tighter opacity-80 mt-0.5">REPUBLIC OF KOREA</p>
                     </div>
-
                     <div className="my-2 opacity-90">
                         <Icons.KoreaEmblem size={48} className="md:w-[60px] md:h-[60px] text-[#d8c2ff]" />
                     </div>
-
                     <div className="mb-2">
                         <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">여권</p>
                         <p className="text-[6px] md:text-[8px] font-serif tracking-wider opacity-80 mt-0.5">PASSPORT</p>
                     </div>
-                    
                     {!isClickable && (
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                             <Icons.Lock size={24} className="text-white/70" />
@@ -569,7 +557,7 @@ const App = () => {
                         <div className="flex flex-col gap-1.5 w-full">
                             {item.verse && (
                                 <button 
-                                onClick={(e) => openVersePopup(e, item, index)}
+                                onClick={(e) => openVersePopup(e, item)}
                                 className="w-full bg-white/80 border border-purple-200 text-purple-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-purple-50 font-bold flex items-center justify-center gap-1 backdrop-blur-sm"
                                 >
                                 <Icons.Ticket size={12} /> 탑승권({item.verse})
@@ -621,15 +609,6 @@ const App = () => {
               </p>
               <div className="inline-block px-6 py-2 bg-purple-100 text-purple-900 rounded-full font-black text-sm md:text-lg border border-purple-200 mb-6">
                 GATE: {selectedVerse.verse}
-              </div>
-
-              <div className="flex gap-2 justify-center mb-6">
-                <button
-                  onClick={resetSelectedDay}
-                  className="px-4 py-2 rounded-full bg-purple-50 border border-purple-200 text-purple-900 font-bold text-sm hover:bg-purple-100"
-                >
-                  잘못 열었어요 (되돌리기)
-                </button>
               </div>
               
               <div className="mt-2 p-4 bg-gray-100 rounded-xl border border-gray-200 text-left">
@@ -742,6 +721,11 @@ const App = () => {
           </div>
           <span className="text-[9px] font-bold text-gray-400 uppercase">Stamps Collected</span>
         </div>
+
+        <button onClick={resetAllProgress} className="flex flex-col items-center text-gray-500 hover:text-purple-600">
+          <Icons.AlertCircle size={18} />
+          <span className="text-[9px] font-bold mt-0.5">전체 리셋</span>
+        </button>
       </footer>
 
       <style dangerouslySetInnerHTML={{ __html: `
