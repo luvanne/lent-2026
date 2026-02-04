@@ -4,7 +4,6 @@ import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   signInAnonymously, 
-  signInWithCustomToken, 
   onAuthStateChanged 
 } from 'firebase/auth';
 import { 
