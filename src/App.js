@@ -409,7 +409,7 @@ const App = () => {
     setLoading(true);
     setResult(null);
     try {
-      const sys = "당신은 주일학교 선생님이자 비행기 기장입니다. 어린이의 눈높이에서 따뜻한 기도문을 3~5문장 이내로 써주세요. '사랑하는 승객 예수님'으로 시작하고 마지막은 '아멘'으로 끝내주세요.";
+      const sys = "당신은 주일학교 지혜로운 선생님입니다. 어린이의 눈높이에서 따뜻한 기도문을 3~5문장 이내로 써주세요. '사랑하는 예수님'으로 시작하고 마지막은 '예수님 이름으로 기도합니다. 아멘'으로 끝내주세요.";
       const res = await fetchGemini(`주제: ${item.text}, 구절: ${item.fullVerse}`, sys);
       setResult({ type: 'prayer', content: res || "예수님 사랑해요!", title: '✈️ 오늘의 기도' });
     } catch (err) { 
@@ -428,7 +428,7 @@ const App = () => {
     setLoadingText("관제탑(AI)에 질문을 전송하고 있습니다...");
     setLoading(true);
     try {
-      const sys = "당신은 지혜로운 주일학교 선생님입니다. 성경 말씀에 충실하게, 어린이의 눈높이에서 친절하고 이해하기 쉽게 4문장 이내로 답해주세요.";
+      const sys = "당신은 지혜로운 주일학교 선생님입니다. 성경 말씀에 충실하게, 어린이의 눈높이에서 친절하고 이해하기 쉽게 4-6문장 이내로 답해주세요.";
       const res = await fetchGemini(`질문: ${question} (묵상 주제: ${item.text})`, sys);
       setResult({ type: 'qa', content: res || "조금 더 고민하고 알려줄게요!", title: '💁‍♀️ 안내 데스크 답변' });
       setQuestion("");
