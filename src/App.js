@@ -15,8 +15,8 @@ import {
 } from 'firebase/firestore';
 
 // ==============================================================================
-// [배포 전용 최종 수정 버전 - AI 연결 100% 해결] 
-// 400 에러 방지를 위해 요청 구조를 단순화하고 가장 안정적인 방식으로 수정했습니다.
+// [배포 전용 최종 수정 버전 - AI 연결 최적화] 
+// 400 에러 및 연결 문제를 방지하기 위해 요청 엔진을 가장 안정적인 구조로 재설계했습니다.
 // ==============================================================================
 
 // 1. Firebase 설정값
@@ -47,7 +47,7 @@ try {
   auth = getAuth(app);
   db = getFirestore(app);
 } catch (e) {
-  console.error("Firebase Initialization Error:", e);
+  console.error("Firebase 초기화 에러:", e);
 }
 
 // --- 아이콘 컴포넌트 ---
@@ -179,16 +179,22 @@ const Icons = {
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const fetchGemini = async (prompt, systemPrompt = "") => {
-  // 400 에러 방지를 위해 가장 표준적인 URL과 단순화된 페이로드 사용
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  // [수정] 400 에러 해결을 위해 가장 표준적이고 단순한 요청 구조로 변경
+  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
   
-  // 지침과 질문을 하나로 합쳐서 전송 (가장 확실한 방법)
-  const combinedPrompt = `[지침: ${systemPrompt}]\n\n질문: ${prompt}`;
-  
+  // 지침과 질문을 결합하여 명확하게 전달
+  const contentText = systemPrompt 
+    ? `지침: ${systemPrompt}\n\n사용자 요청: ${prompt}`
+    : prompt;
+
   const payload = {
-    contents: [{ 
-      parts: [{ text: combinedPrompt }] 
-    }]
+    contents: [
+      {
+        parts: [
+          { text: contentText }
+        ]
+      }
+    ]
   };
 
   let delay = 1000;
@@ -203,8 +209,8 @@ const fetchGemini = async (prompt, systemPrompt = "") => {
       const data = await response.json();
       
       if (!response.ok) {
-        console.error("Gemini 상세 에러:", data);
-        throw new Error(data.error?.message || `API error ${response.status}`);
+        console.error("AI 응답 에러:", data);
+        throw new Error(data.error?.message || `상태 코드 ${response.status}`);
       }
       
       return data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -276,10 +282,8 @@ const App = () => {
     { date: "4/4", text: "예수님은 부활을 기다리셨어요", verse: "마 27:60", type: "holy", fullVerse: "바위 속에 판 자기 새 무덤에 넣어 두고 큰 돌을 굴려 무덤 문에 놓고 가니 (마태복음 27:60)" },
   ];
 
-  // --- 1. Firebase 인증 및 초기화 ---
   useEffect(() => {
     if (!auth) return;
-
     const initAuth = async () => {
       try {
         await signInAnonymously(auth);
@@ -298,18 +302,14 @@ const App = () => {
             await setDoc(userInitRef, { joined: true, timestamp: new Date() });
             await setDoc(statsRef, { totalPilgrims: increment(1) }, { merge: true });
           }
-        } catch (err) {
-          console.error("초기화 오류:", err);
-        }
+        } catch (err) { console.error("초기화 오류:", err); }
       }
     });
     return () => unsubscribe();
   }, []);
 
-  // --- 2. Firestore 실시간 동기화 ---
   useEffect(() => {
     if (!user || !db) return;
-
     const progressRef = doc(db, 'artifacts', appId, 'users', user.uid, 'progress', 'current');
     const unsubPrivate = onSnapshot(progressRef, (snap) => {
       if (snap.exists()) {
@@ -317,9 +317,7 @@ const App = () => {
         setRevealedDays(d.revealedDays || {});
         setCompletedDays(d.completedDays || {});
       }
-    }, (err) => {
-        console.error("데이터 동기화 오류:", err);
-    });
+    }, (err) => console.error("데이터 동기화 오류:", err));
 
     const statsRef = doc(db, 'artifacts', appId, 'public', 'data', 'community', 'totals');
     const unsubPublic = onSnapshot(statsRef, (snap) => {
@@ -344,9 +342,8 @@ const App = () => {
         const statsRef = doc(db, 'artifacts', appId, 'public', 'data', 'community', 'totals');
         await setDoc(statsRef, { todayStickers: increment(1) }, { merge: true });
       }
-    } catch (err) { 
-        console.error(err);
-    } finally { setTimeout(() => setSyncing(false), 500); }
+    } catch (err) { console.error(err); } 
+    finally { setTimeout(() => setSyncing(false), 500); }
   };
 
   const handleDayClick = (index) => {
@@ -381,7 +378,7 @@ const App = () => {
     setLoading(true);
     setResult(null);
     try {
-      const sys = "당신은 어린이를 사랑하는 주일학교 선생님이자 비행기 기장입니다. 3문장 내외로 따뜻한 기도문을 써주세요. '사랑하는 승객 예수님,' 또는 '우리의 기장되신 예수님,'으로 시작하고 '예수님 이름으로 기도합니다, 아멘.'으로 마쳐주세요.";
+      const sys = "당신은 주일학교 선생님이자 비행기 기장입니다. 어린이의 눈높이에서 따뜻한 기도문을 3문장 이내로 써주세요. '사랑하는 승객 예수님'으로 시작하고 '아멘'으로 끝내주세요.";
       const res = await fetchGemini(`주제: ${item.text}, 구절: ${item.fullVerse}`, sys);
       setResult({ type: 'prayer', content: res || "예수님 사랑해요!", title: '✈️ 오늘의 기내 기도' });
     } catch (err) { 
@@ -416,7 +413,7 @@ const App = () => {
         </div>
       )}
 
-      {/* Header */}
+      {/* Header (Flight Board Style) */}
       <header className="max-w-6xl mx-auto text-center mb-6 md:mb-10 pt-2">
         <div className="inline-flex items-center justify-center gap-3 bg-blue-900 text-white px-6 py-2 rounded-full mb-4 shadow-lg">
           <Icons.PlaneTakeoff size={24} className="text-sky-300" />
