@@ -16,8 +16,8 @@ import {
 } from 'firebase/firestore';
 
 // ==============================================================================
-// [배포를 위한 설정 구역] 
-// 사용자께서 제공해주신 Firebase 설정과 Gemini API 키가 적용되었습니다.
+// [배포용 안전 코드 적용] 
+// Vercel 배포 시 발생하는 'not defined' 오류를 방지하기 위한 코드가 적용되었습니다.
 // ==============================================================================
 
 // 1. Firebase 설정값
@@ -36,9 +36,7 @@ const YOUR_GEMINI_API_KEY = "AIzaSyCJNyeJcCIW8blSV64SyV8TV3mFqOK3E";
 
 // ==============================================================================
 
-// --- 환경 감지 및 초기화 (수정됨: 배포 에러 방지) ---
-// ESLint 오류(no-undef)를 방지하기 위해 window 객체를 통해 전역 변수에 접근합니다.
-
+// --- 환경 변수 안전하게 가져오기 (배포 에러 방지 핵심 코드) ---
 const getGlobalVariable = (name) => {
   if (typeof window !== 'undefined' && window[name]) {
     return window[name];
@@ -46,6 +44,7 @@ const getGlobalVariable = (name) => {
   return undefined;
 };
 
+// 직접 변수를 쓰지 않고 함수를 통해 가져와서 에러를 피합니다.
 const canvasConfig = getGlobalVariable('__firebase_config');
 const canvasAppId = getGlobalVariable('__app_id');
 const canvasAuthToken = getGlobalVariable('__initial_auth_token');
@@ -61,11 +60,11 @@ const firebaseConfig = useUserConfig
 // Gemini API 키 선택
 const apiKey = (useUserConfig && YOUR_GEMINI_API_KEY) ? YOUR_GEMINI_API_KEY : ""; 
 
-// 앱 ID 설정 (본인 DB 사용 시 깔끔한 ID 사용)
+// 앱 ID 설정
 const rawAppId = canvasAppId || 'lent-2026-airport-theme';
 const appId = useUserConfig ? 'lent-2026-flight' : rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_');
 
-// Firebase 초기화 (설정이 있을 때만)
+// Firebase 초기화
 let app, auth, db;
 if (firebaseConfig) {
   try {
@@ -77,7 +76,7 @@ if (firebaseConfig) {
   }
 }
 
-// --- 공항/여행 테마 SVG 아이콘 컴포넌트 ---
+// --- 아이콘 컴포넌트 ---
 const Icons = {
   Plane: ({ size = 24, className = "" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -192,7 +191,6 @@ const Icons = {
       <line x1="12" y1="20" x2="12.01" y2="20"></line>
     </svg>
   ),
-  // 대한민국 국장(무궁화+태극) 스타일 아이콘
   KoreaEmblem: ({ size = 24, className = "" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <circle cx="12" cy="12" r="9" strokeWidth="1.5" />
@@ -204,7 +202,6 @@ const Icons = {
   ),
 };
 
-// --- Gemini API 통신 함수 ---
 const fetchGemini = async (prompt, systemPrompt = "") => {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
   const payload = {
@@ -240,10 +237,7 @@ const App = () => {
   const [alertMessage, setAlertMessage] = useState("");
   const [syncing, setSyncing] = useState(false);
   
-  // 글로벌 통계 상태
   const [globalStats, setGlobalStats] = useState({ totalPilgrims: 0, todayStickers: 0 });
-  
-  // 인터랙션 상태
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("");
   const [result, setResult] = useState(null); 
@@ -294,9 +288,8 @@ const App = () => {
     { date: "4/4", text: "예수님은 부활을 기다리셨어요", verse: "마 27:60", type: "holy", fullVerse: "바위 속에 판 자기 새 무덤에 넣어 두고 큰 돌을 굴려 무덤 문에 놓고 가니 (마태복음 27:60)" },
   ];
 
-  // --- 1. Firebase 인증 및 초기화 ---
   useEffect(() => {
-    if (!auth) return; // 설정이 없으면 중단
+    if (!auth) return;
 
     const initAuth = async () => {
       try {
@@ -331,7 +324,6 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // --- 2. Firestore 실시간 동기화 ---
   useEffect(() => {
     if (!user || !db) return;
 
@@ -402,13 +394,11 @@ const App = () => {
     saveToCloud(nRev, nComp, isNew);
   };
 
-  // --- 추가된 함수: 말씀 팝업 열기 ---
   const openVersePopup = (e, item) => {
-    e.stopPropagation(); // 부모 요소 클릭 이벤트 전파 방지
+    e.stopPropagation();
     setSelectedVerse(item);
   };
 
-  // --- AI 기능 핸들러 ---
   const generatePrayer = async (item) => {
     setLoadingText("기내 방송실에서 기도문을 작성 중입니다...");
     setLoading(true);
@@ -445,7 +435,6 @@ const App = () => {
         </div>
       )}
 
-      {/* Header (Flight Board Style) */}
       <header className="max-w-6xl mx-auto text-center mb-6 md:mb-10 pt-2">
         <div className="inline-flex items-center justify-center gap-3 bg-blue-900 text-white px-6 py-2 rounded-full mb-4 shadow-lg">
           <Icons.PlaneTakeoff size={24} className="text-sky-300" />
@@ -461,9 +450,7 @@ const App = () => {
           </p>
         </div>
         
-        {/* Progress Board (Runway Style) */}
         <div className="bg-white rounded-xl md:rounded-2xl p-4 md:p-6 shadow-xl inline-block w-full max-w-2xl border-b-8 border-blue-900 relative overflow-hidden">
-          {/* Decorative screws */}
           <div className="absolute top-2 left-2 w-2 h-2 rounded-full bg-gray-300"></div>
           <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-gray-300"></div>
 
@@ -474,15 +461,12 @@ const App = () => {
             <span className="text-blue-900 font-black text-lg md:text-2xl font-mono">{progressPercent}%</span>
           </div>
           
-          {/* Runway Progress Bar */}
           <div className="w-full bg-gray-200 h-4 md:h-6 rounded-full overflow-visible border-2 border-gray-300 relative mb-8 mt-4">
-            {/* Dashed Center Line */}
             <div className="absolute inset-0 flex items-center justify-center">
                 <div className="w-full h-[2px] border-t-2 border-dashed border-gray-400/50"></div>
             </div>
             
             <div className="h-full bg-sky-500 rounded-l-full transition-all duration-1000 ease-out relative" style={{ width: `${progressPercent}%` }}>
-              {/* Plane Icon Moving */}
               <div className="absolute -right-3 -top-3 md:-top-4 text-blue-600 drop-shadow-xl transform translate-x-1/2 z-10">
                 <Icons.Plane size={36} className="text-blue-700 transform rotate-90 md:w-12 md:h-12" />
               </div>
@@ -514,7 +498,6 @@ const App = () => {
         </div>
       </header>
 
-      {/* Grid Layout (Passport Pages) */}
       <main className="max-w-7xl mx-auto px-1">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3 md:gap-6">
           {calendarData.map((item, index) => {
@@ -522,7 +505,6 @@ const App = () => {
             const isComp = completedDays[index];
             const isClickable = index === 0 || completedDays[index - 1];
             
-            // 여권 커버 모드 (닫힘) vs 내지 모드 (열림)
             if (!isRev) {
               return (
                 <div 
@@ -535,9 +517,7 @@ const App = () => {
                     bg-[#152e58] border-r-4 border-b-4 border-[#0e1d3a]
                   `}
                 >
-                  {/* 여권 커버 디자인 (대한민국 신여권 스타일) */}
                   <div className="flex flex-col items-center justify-between h-full py-4 px-2 text-[#c5b358] text-center relative">
-                    {/* 날짜 배지 */}
                     <div className="absolute top-2 right-2 bg-[#c5b358] text-[#152e58] text-[9px] md:text-[10px] font-black px-1.5 py-0.5 rounded">
                       {item.date}
                     </div>
@@ -562,13 +542,11 @@ const App = () => {
                         </div>
                     )}
                   </div>
-                  {/* 제본선 효과 */}
                   <div className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#0a1629] opacity-50"></div>
                 </div>
               );
             }
 
-            // 여권 내지 모드 (열림)
             return (
               <div 
                 key={index}
@@ -579,7 +557,6 @@ const App = () => {
                   bg-[#fdfbf7] border border-gray-200
                 `}
               >
-                {/* Passport Page Header */}
                 <div className={`
                     h-8 md:h-10 w-full flex items-center justify-between px-3 text-white font-bold text-xs md:text-sm uppercase tracking-widest border-b-2 border-dashed border-white/30
                     ${item.type === 'sun' ? 'bg-orange-500' : 
@@ -590,10 +567,8 @@ const App = () => {
                     <span>{item.date}</span>
                 </div>
 
-                {/* Page Content (Paper Texture & Watermark) */}
                 <div className="flex-grow p-3 md:p-4 flex flex-col items-center justify-between relative bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')]">
                     
-                  {/* Watermark (Traditional Pattern Style) */}
                   <div className="absolute inset-0 flex items-center justify-center opacity-[0.07] pointer-events-none">
                       <Icons.KoreaEmblem size={120} />
                   </div>
@@ -621,7 +596,6 @@ const App = () => {
                         </div>
                     </div>
 
-                  {/* Stamp */}
                   {isComp && (
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-15deg] border-4 border-double border-red-600/70 rounded-full px-2 py-2 text-red-600/70 font-black text-xs md:text-sm uppercase tracking-widest z-20 pointer-events-none animate-in zoom-in duration-300 bg-white/10 backdrop-blur-[1px] w-20 h-20 flex items-center justify-center shadow-sm">
                         <div className="text-center leading-none">
@@ -637,11 +611,9 @@ const App = () => {
         </div>
       </main>
 
-      {/* Bible Modal (Passport Control) */}
       {selectedVerse && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-[#fdfbf7] rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden border-[10px] border-blue-900 relative">
-             {/* Security Header */}
             <div className="bg-blue-900 p-4 flex justify-between items-center text-white border-b-4 border-yellow-400">
               <div className="flex items-center gap-3">
                 <Icons.Ticket size={24} className="text-yellow-400" />
@@ -654,7 +626,6 @@ const App = () => {
             </div>
 
             <div className="p-6 md:p-10 text-center relative">
-                {/* Barcode Deco */}
                 <div className="absolute right-[-40px] top-1/2 -rotate-90 opacity-10">
                     <div className="flex gap-1 h-32">
                         <div className="w-2 bg-black"></div><div className="w-1 bg-black"></div><div className="w-4 bg-black"></div><div className="w-1 bg-black"></div>
@@ -694,7 +665,6 @@ const App = () => {
         </div>
       )}
 
-      {/* Result Modal (In-flight Screen) */}
       {result && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden border-8 border-gray-800 transform animate-in zoom-in duration-300">
@@ -722,7 +692,6 @@ const App = () => {
         </div>
       )}
 
-      {/* Global Loading Overlay */}
       {loading && !result && (
         <div className="fixed inset-0 z-[200] bg-sky-900/40 backdrop-blur-md flex flex-col items-center justify-center p-6">
           <div className="relative">
@@ -741,11 +710,9 @@ const App = () => {
         </div>
       )}
 
-      {/* Intro Overlay (Ticket Style) */}
       {showIntro && (
         <div className="fixed inset-0 z-[110] bg-blue-900/90 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="max-w-md w-full bg-white rounded-3xl overflow-hidden shadow-2xl relative">
-            {/* Top Section (Blue) */}
             <div className="bg-blue-600 p-8 text-center text-white relative overflow-hidden">
                 <div className="absolute -left-4 -top-4 w-24 h-24 bg-blue-500 rounded-full opacity-50"></div>
                 <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-blue-700 rounded-full opacity-50"></div>
@@ -755,17 +722,15 @@ const App = () => {
                 <p className="text-blue-100 mt-2 font-medium relative z-10">Flight 2026: Heaven Bound</p>
             </div>
             
-            {/* Perforated Line */}
             <div className="relative h-8 bg-white">
                 <div className="absolute top-0 left-0 w-4 h-8 bg-blue-900/90 rounded-r-full"></div>
                 <div className="absolute top-0 right-0 w-4 h-8 bg-blue-900/90 rounded-l-full"></div>
                 <div className="absolute top-1/2 left-4 right-4 border-t-2 border-dashed border-gray-300"></div>
             </div>
 
-            {/* Content Section */}
             <div className="p-8 pt-2 bg-white text-center">
               <p className="text-gray-600 mb-6 font-bold leading-relaxed">
-                예수님과 함께하는 <span className="text-blue-600">40일간의 천국 여행</span>을<br/>시작할 준비가 되셨나요?
+                예수님과 함께하는 <span className="text-blue-600">40일간의 말씀 여행</span>을<br/>시작할 준비가 되셨나요?
               </p>
               
               <div className="text-left bg-gray-50 p-4 rounded-xl border border-gray-200 text-sm mb-6 space-y-2">
@@ -794,7 +759,6 @@ const App = () => {
         </div>
       )}
 
-      {/* Floating Bottom Navigation */}
       <footer className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[95%] max-w-md bg-white/90 backdrop-blur-md rounded-full shadow-2xl border border-gray-200 p-2 flex items-center justify-between px-6 z-50 no-print">
         <button onClick={() => window.print()} className="flex flex-col items-center text-gray-500 hover:text-blue-600">
           <Icons.Printer size={18} />
