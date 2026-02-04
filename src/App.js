@@ -15,10 +15,8 @@ import {
 } from 'firebase/firestore';
 
 // ==============================================================================
-// [배포 전용 최종 수정 버전 - AI 연결 완벽 해결] 
-// 1. 모델: gemini-1.5-flash (안정성 최우선)
-// 2. 설정: 안전 필터 모두 해제 (종교적 키워드 차단 방지)
-// 3. 에러 핸들링: 상세 메시지 출력 기능 추가
+// [배포 전용 최종 수정 버전 - Vercel Functions 프록시 적용] 
+// Gemini API 호출은 /api/gemini로 전송 (키는 서버에만 보관)
 // ==============================================================================
 
 // 1. Firebase 설정값
@@ -32,14 +30,8 @@ const YOUR_FIREBASE_CONFIG = {
   measurementId: "G-4SCP59GKZ7"
 };
 
-// 2. Gemini API 키
-const YOUR_GEMINI_API_KEY = "AIzaSyCJNyeJcCIW8blSV64SyV8TV3mFqOK3E"; 
-
-// ==============================================================================
-
 // --- 환경 설정 ---
 const firebaseConfig = YOUR_FIREBASE_CONFIG;
-const apiKey = YOUR_GEMINI_API_KEY; 
 const appId = 'lent-2026-flight-v1'; 
 
 // Firebase 초기화
@@ -181,51 +173,17 @@ const Icons = {
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const fetchGemini = async (prompt, systemPrompt = "") => {
-  // [수정] 가장 안정적인 v1beta 엔드포인트와 표준 요청 구조 사용
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-  
-  const payload = {
-    contents: [
-      {
-        parts: [
-          { text: `시스템 지침: ${systemPrompt}\n\n사용자 질문: ${prompt}` }
-        ]
-      }
-    ],
-    // [추가] 종교적 단어 차단 방지를 위해 안전 필터 완전 해제
-    safetySettings: [
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-    ],
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 500,
-    }
-  };
-
   let delay = 1000;
   for (let i = 0; i < 5; i++) {
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+      const response = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, systemPrompt })
       });
-      
       const data = await response.json();
-      
-      if (!response.ok) {
-        console.error("AI 서버 응답 에러:", data);
-        throw new Error(data.error?.message || "알 수 없는 API 에러");
-      }
-      
-      if (!data.candidates || data.candidates.length === 0) {
-        throw new Error("AI가 답변을 생성하지 못했습니다. (필터링 가능성)");
-      }
-
-      return data.candidates[0].content.parts[0].text;
+      if (!response.ok) throw new Error(data?.error || "API request failed");
+      return data.text || "";
     } catch (err) {
       if (i === 4) throw err;
       await wait(delay);
