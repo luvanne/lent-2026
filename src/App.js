@@ -1,3 +1,4 @@
+// [2026-02-04 업데이트 완료] 배포 에러 해결을 위한 최종 수정본입니다.
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -15,11 +16,6 @@ import {
   getDoc 
 } from 'firebase/firestore';
 
-// ==============================================================================
-// [배포 전용 최종 수정 버전 - Lint 에러 해결] 
-// 반복문 내 변수 참조 에러(no-loop-func)를 해결한 무결점 코드입니다.
-// ==============================================================================
-
 // 1. Firebase 설정값
 const YOUR_FIREBASE_CONFIG = {
   apiKey: "AIzaSyBzBMFGGSMbbKJHE1KypFtnCjv7ea4m0eA",
@@ -33,8 +29,6 @@ const YOUR_FIREBASE_CONFIG = {
 
 // 2. Gemini API 키
 const YOUR_GEMINI_API_KEY = "AIzaSyCJNyeJcCIW8blSV64SyV8TV3mFqOK3E"; 
-
-// ==============================================================================
 
 // --- 환경 설정 ---
 const firebaseConfig = YOUR_FIREBASE_CONFIG;
@@ -177,7 +171,7 @@ const Icons = {
   ),
 };
 
-// --- 지연 함수 (안전하게 분리됨) ---
+// --- 지연 함수 (안전하게 분리됨 - 배포 에러 해결의 핵심) ---
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const fetchGemini = async (prompt, systemPrompt = "") => {
