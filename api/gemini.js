@@ -8,7 +8,6 @@ export default async function handler(req, res) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
 
-    // 모델 변경: gemini-2.5-flash
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
     const payload = {
@@ -19,7 +18,7 @@ export default async function handler(req, res) {
         { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
         { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
       ],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 500 }
+      generationConfig: { temperature: 0.8, maxOutputTokens: 800 }
     };
 
     const response = await fetch(url, {
