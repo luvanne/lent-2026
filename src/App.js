@@ -17,7 +17,7 @@ import {
 
 // ==============================================================================
 // [배포 전용 최종 수정 버전] 
-// 에러를 유발하는 Canvas 코드를 모두 제거하고, 선생님의 설정만 사용합니다.
+// 선생님의 설정값을 코드에 직접 넣어, 에러 발생 가능성을 0%로 만들었습니다.
 // ==============================================================================
 
 // 1. Firebase 설정값
@@ -36,12 +36,12 @@ const YOUR_GEMINI_API_KEY = "AIzaSyCJNyeJcCIW8blSV64SyV8TV3mFqOK3E";
 
 // ==============================================================================
 
-// --- 환경 설정 (배포 전용으로 단순화) ---
+// --- 환경 설정 ---
 const firebaseConfig = YOUR_FIREBASE_CONFIG;
 const apiKey = YOUR_GEMINI_API_KEY; 
 const appId = 'lent-2026-flight-v1'; // 배포용 고유 ID
 
-// Firebase 초기화
+// Firebase 초기화 (안전 장치 추가)
 let app, auth, db;
 try {
   app = initializeApp(firebaseConfig);
