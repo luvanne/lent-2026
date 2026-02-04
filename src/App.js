@@ -214,13 +214,13 @@ const App = () => {
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
   const calendarData = [
-    { date: "2/22", text: "준비 주일", verse: "", type: "sun", fullVerse: "사순절 여정을 시작하며 마음을 준비하는 주일입니다. 2026년 사순절, 예수님과 함께 걷기를 시작해볼까요?" },
+    { date: "2/22", text: "오늘은 준비 주일입니다", verse: "야호!", type: "sun", fullVerse: "사순절 여정을 시작하며 마음을 준비하는 주일입니다. 2026년 사순절, 예수님과 함께 하는 비행를 시작해볼까요?" },
     { date: "2/23", text: "예수님은 몸과 마음이 자라나셨어요", verse: "눅 2:52", type: "normal", fullVerse: "예수는 지혜와 키가 자라가며 하나님과 사람에게 더욱 사랑스러워 가시더라 (누가복음 2:52)" },
     { date: "2/24", text: "예수님은 사랑을 받으셨어요", verse: "눅 2:52", type: "normal", fullVerse: "예수는 지혜와 키가 자라가며 하나님과 사람에게 더욱 사랑스러워 가시더라 (누가복음 2:52)" },
     { date: "2/25", text: "예수님은 기도로 대화하셨어요", verse: "막 1:35", type: "normal", fullVerse: "새벽 아직도 밝기 전에 예수께서 일어나 나가 한적한 곳으로 가사 거기서 기도하시더니 (마가복음 1:35)" },
     { date: "2/26", text: "예수님은 유혹을 이기셨어요", verse: "히 4:15", type: "normal", fullVerse: "우리에게 있는 대제사장은 우리의 연약함을 동정하지 못하실 이가 아니요 모든 일에 우리와 똑같이 시험을 받으신 이로되 죄는 없으시니라 (히브리서 4:15)" },
     { date: "2/27", text: "예수님은 말씀을 소중히 여겼어요", verse: "마 4:4", type: "normal", fullVerse: "예수께서 대답하여 이르시되 기록되었으되 사람이 떡으로만 살 것이 아니요 하나님의 입으로부터 나오는 모든 말씀으로 살 것이라 하였느니라 하시니 (마태복음 4:4)" },
-    { date: "2/28", text: "예수님은 거룩한 아들이세요", verse: "막 1:24", type: "normal", fullVerse: "나사렛 예수여 우리가 당신과 무슨 상관이 있나이까 우리를 멸하러 왔나이까 나는 당신이 누구인 줄 아노니 하나님의 거룩한 자니이다 (마가복음 1:24)" },
+    { date: "2/28", text: "예수님은 하나님의 아들이세요", verse: "마 16:16", type: "normal", fullVerse: "시몬 베드로가 대답하여 이르되 주는 그리스도시요 살아 계신 하나님의 아들이시니이다 (마태복음 16:16)" },
     { date: "3/1", text: "예수님은 죄가 없으신 분", verse: "히 7:26", type: "sun", fullVerse: "이러한 대제사장은 우리에게 합당하니 거룩하고 악이 없고 더러움이 없고 죄인에게서 떠나 계시고 하늘보다 높이 되신 이 라 (히브리서 7:26)" },
     { date: "3/2", text: "예수님은 진짜만 말씀하세요", verse: "요 14:6", type: "normal", fullVerse: "예수께서 이르시되 내가 곧 길이요 진리요 생명이니 나로 말미암지 않고는 아버지께로 올 자가 없느니라 (요한복음 14:6)" },
     { date: "3/3", text: "예수님은 마음을 밝혀 주세요", verse: "요 8:12", type: "normal", fullVerse: "예수께서 또 말씀하여 이르시되 나는 세상의 빛이니 나를 따르는 자는 어둠에 다니지 아니하고 생명의 빛을 얻으리라 (요한복음 8:12)" },
@@ -743,7 +743,7 @@ const App = () => {
             </div>
             <div className="p-8 pt-2 bg-white text-center">
               <p className="text-gray-600 mb-6 font-bold leading-relaxed">
-                예수님과 함께하는 <span className="text-purple-600">40일간의 천국 여행</span>을<br/>시작할 준비가 되셨나요?
+                예수님과 함께하는 <span className="text-purple-600">40일간의 말씀 여행</span>을<br/>시작할 준비가 되셨나요?
               </p>
               <button 
                 onClick={() => setShowIntro(false)}
