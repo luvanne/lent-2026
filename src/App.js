@@ -197,10 +197,12 @@ const App = () => {
   const [completedDays, setCompletedDays] = useState({});
   const [revealedDays, setRevealedDays] = useState({});
   const [selectedVerse, setSelectedVerse] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(null);
   const [showIntro, setShowIntro] = useState(true);
   const [alertMessage, setAlertMessage] = useState("");
   const [syncing, setSyncing] = useState(false);
-  
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
   const [globalStats, setGlobalStats] = useState({ totalPilgrims: 0, todayStickers: 0 });
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("");
@@ -251,6 +253,14 @@ const App = () => {
     { date: "4/3", text: "예수님은 구원을 다 이루셨어요", verse: "요 19:30", type: "holy", fullVerse: "예수께서 신 포도주를 받으신 후에 이르시되 다 이루었다 하시고 머리를 숙이니 영혼이 떠나가시니라 (요한복음 19:30)" },
     { date: "4/4", text: "예수님은 부활을 기다리셨어요", verse: "마 27:60", type: "holy", fullVerse: "바위 속에 판 자기 새 무덤에 넣어 두고 큰 돌을 굴려 무덤 문에 놓고 가니 (마태복음 27:60)" },
   ];
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownSeconds((s) => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownSeconds]);
 
   useEffect(() => {
     if (!auth) return;
@@ -338,37 +348,66 @@ const App = () => {
     saveToCloud(nRev, nComp, isNew);
   };
 
-  const openVersePopup = (e, item) => {
+  const resetSelectedDay = () => {
+    if (selectedIndex === null) return;
+    const nRev = { ...revealedDays };
+    const nComp = { ...completedDays };
+    delete nRev[selectedIndex];
+    delete nComp[selectedIndex];
+    setRevealedDays(nRev);
+    setCompletedDays(nComp);
+    saveToCloud(nRev, nComp, false);
+    setSelectedVerse(null);
+    setSelectedIndex(null);
+  };
+
+  const openVersePopup = (e, item, index) => {
     e.stopPropagation();
     setSelectedVerse(item);
+    setSelectedIndex(index);
+  };
+
+  const handleAiError = (err) => {
+    const msg = String(err?.message || err || "");
+    const match = msg.match(/retry in\s*([0-9.]+)s/i);
+    if (match) {
+      const sec = Math.ceil(parseFloat(match[1]));
+      setCooldownSeconds(sec);
+      setAlertMessage(`AI 쿨다운: ${sec}초 후 다시 시도해주세요.`);
+      setTimeout(() => setAlertMessage(""), 3000);
+    } else {
+      setAlertMessage(`AI 오류: ${msg}`);
+      setTimeout(() => setAlertMessage(""), 3000);
+    }
   };
 
   const generatePrayer = async (item) => {
+    if (cooldownSeconds > 0) return;
     setLoadingText("기내 방송실에서 기도문을 작성 중입니다...");
     setLoading(true);
     setResult(null);
     try {
-      const sys = "당신은 따뜻하고 친절한 주일학교 선생님이자 비행기 기장입니다. 어린이 눈높이로 자연스럽고 부드럽게 4~6문장으로 기도문을 써주세요. 중간에 위로의 한 문장을 포함하고, 마지막은 '예수님 이름으로 기도합니다, 아멘.'으로 마쳐주세요.";
+      const sys = "당신은 따뜻하고 친절한 주일학교 선생님이자 비행기 기장입니다. 어린이 눈높이로 자연스럽고 부드럽게 4~6문장으로 기도문을 써주세요. 중간에 위로의 한 문장을 포함하고, 마지막 문장은 반드시 끝까지 완성해서 마침표로 끝내세요. 마지막은 꼭 '예수님 이름으로 기도합니다, 아멘.'으로 마쳐주세요. 마지막에 반드시 [END]를 붙여주세요.";
       const res = await fetchGemini(`주제: ${item.text}, 구절: ${item.fullVerse}`, sys);
       setResult({ type: 'prayer', content: res || "예수님 사랑해요!", title: '✈️ 오늘의 기내 기도' });
     } catch (err) { 
         console.error(err);
-        setAlertMessage(`AI 오류: ${err.message}`); 
+        handleAiError(err);
     } finally { setLoading(false); }
   };
 
   const askQuestion = async (item) => {
-    if (!question.trim()) return;
+    if (!question.trim() || cooldownSeconds > 0) return;
     setLoadingText("관제탑(AI)에 질문을 전송하고 있습니다...");
     setLoading(true);
     try {
-      const sys = "당신은 지혜로운 주일학교 선생님입니다. 성경 말씀에 충실하게, 어린이에게 이야기하듯 4~6문장으로 자연스럽게 설명해주세요. 너무 짧게 끝내지 말고, 예시나 비유를 1개 넣어주세요. 마지막에 아이를 격려하는 한 문장을 덧붙여 주세요.";
+      const sys = "당신은 지혜로운 주일학교 선생님입니다. 성경 말씀에 충실하게, 어린이에게 이야기하듯 4~6문장으로 자연스럽게 설명해주세요. 예시나 비유를 1개 넣어주세요. 마지막 문장은 반드시 끝까지 완성해서 마침표로 끝내고, '힘내자, 예수님이 함께하셔.'로 마무리해 주세요. 마지막에 반드시 [END]를 붙여주세요.";
       const res = await fetchGemini(`질문: ${question} (묵상 주제: ${item.text})`, sys);
       setResult({ type: 'qa', content: res || "조금 더 고민하고 알려줄게요!", title: '💁‍♀️ 안내 데스크 답변' });
       setQuestion("");
     } catch (err) { 
         console.error(err);
-        setAlertMessage(`AI 오류: ${err.message}`); 
+        handleAiError(err);
     } finally { setLoading(false); }
   };
 
@@ -376,23 +415,23 @@ const App = () => {
   const progressPercent = Math.round((completedCount / calendarData.length) * 100);
 
   return (
-    <div className="min-h-screen bg-sky-50 font-sans p-4 md:p-8 pb-32 overflow-x-hidden text-slate-800 selection:bg-sky-200">
+    <div className="min-h-screen bg-purple-50 font-sans p-4 md:p-8 pb-32 overflow-x-hidden text-slate-800 selection:bg-purple-200">
       {alertMessage && (
-        <div className="fixed top-6 md:top-10 left-1/2 -translate-x-1/2 z-[200] bg-orange-600 text-white px-4 md:px-6 py-3 rounded-md shadow-2xl flex items-center gap-3 font-bold animate-in fade-in slide-in-from-top-4 duration-300 text-sm md:text-base w-[90%] md:w-auto border-2 border-orange-400">
+        <div className="fixed top-6 md:top-10 left-1/2 -translate-x-1/2 z-[200] bg-purple-600 text-white px-4 md:px-6 py-3 rounded-md shadow-2xl flex items-center gap-3 font-bold animate-in fade-in slide-in-from-top-4 duration-300 text-sm md:text-base w-[90%] md:w-auto border-2 border-purple-400">
           <Icons.AlertCircle size={20} className="shrink-0" /> {String(alertMessage)}
         </div>
       )}
 
       {/* Header (Flight Board Style) */}
       <header className="max-w-6xl mx-auto text-center mb-6 md:mb-10 pt-2">
-        <div className="inline-flex items-center justify-center gap-3 bg-blue-900 text-white px-6 py-2 rounded-full mb-4 shadow-lg">
-          <Icons.PlaneTakeoff size={24} className="text-sky-300" />
+        <div className="inline-flex items-center justify-center gap-3 bg-purple-900 text-white px-6 py-2 rounded-full mb-4 shadow-lg">
+          <Icons.PlaneTakeoff size={24} className="text-purple-300" />
           <span className="font-black tracking-widest uppercase">Flight 2026</span>
         </div>
-        <h1 className="text-3xl md:text-6xl font-black text-blue-900 mb-3 md:mb-4 drop-shadow-sm tracking-tighter leading-tight">
+        <h1 className="text-3xl md:text-6xl font-black text-purple-900 mb-3 md:mb-4 drop-shadow-sm tracking-tighter leading-tight">
           사순절 40일 묵상 비행 플랜
         </h1>
-        <div className="flex items-center justify-center gap-2 mb-6 md:mb-8 text-blue-700">
+        <div className="flex items-center justify-center gap-2 mb-6 md:mb-8 text-purple-700">
           <Icons.Passport size={20} />
           <p className="text-base md:text-2xl font-bold italic">
             "예수님은 어떤 분이실까?"
@@ -400,12 +439,12 @@ const App = () => {
         </div>
         
         {/* Progress Board */}
-        <div className="bg-white rounded-xl md:rounded-2xl p-4 md:p-6 shadow-xl inline-block w-full max-w-2xl border-b-8 border-blue-900 relative overflow-hidden">
+        <div className="bg-white rounded-xl md:rounded-2xl p-4 md:p-6 shadow-xl inline-block w-full max-w-2xl border-b-8 border-purple-900 relative overflow-hidden">
           <div className="flex items-center justify-between mb-3 md:mb-4 px-2 md:px-4">
-            <span className="text-blue-900 font-extrabold flex items-center gap-2 text-sm md:text-lg">
-              <Icons.Plane size={20} className="text-sky-600 md:w-6 md:h-6" /> 비행 진행률
+            <span className="text-purple-900 font-extrabold flex items-center gap-2 text-sm md:text-lg">
+              <Icons.Plane size={20} className="text-purple-600 md:w-6 md:h-6" /> 비행 진행률
             </span>
-            <span className="text-blue-900 font-black text-lg md:text-2xl font-mono">{progressPercent}%</span>
+            <span className="text-purple-900 font-black text-lg md:text-2xl font-mono">{progressPercent}%</span>
           </div>
           
           <div className="w-full bg-gray-200 h-4 md:h-6 rounded-full overflow-visible border-2 border-gray-300 relative mb-8 mt-4">
@@ -413,9 +452,9 @@ const App = () => {
                 <div className="w-full h-[2px] border-t-2 border-dashed border-gray-400/50"></div>
             </div>
             
-            <div className="h-full bg-sky-500 rounded-l-full transition-all duration-1000 ease-out relative" style={{ width: `${progressPercent}%` }}>
-              <div className="absolute -right-3 -top-3 md:-top-4 text-blue-600 drop-shadow-xl transform translate-x-1/2 z-10">
-                <Icons.Plane size={36} className="text-blue-700 transform rotate-90 md:w-12 md:h-12" />
+            <div className="h-full bg-purple-500 rounded-l-full transition-all duration-1000 ease-out relative" style={{ width: `${progressPercent}%` }}>
+              <div className="absolute -right-3 -top-3 md:-top-4 text-purple-700 drop-shadow-xl transform translate-x-1/2 z-10">
+                <Icons.Plane size={36} className="text-purple-700 transform rotate-90 md:w-12 md:h-12" />
               </div>
             </div>
           </div>
@@ -425,7 +464,7 @@ const App = () => {
               <div className="flex items-center gap-1 md:gap-2 text-gray-500 font-bold text-[10px] md:text-xs mb-1 uppercase">
                 <Icons.Users size={12} /> 총 탑승객
               </div>
-              <div className="text-lg md:text-xl font-black text-blue-900 font-mono">
+              <div className="text-lg md:text-xl font-black text-purple-900 font-mono">
                 {Number(globalStats.totalPilgrims || 1).toLocaleString()}
               </div>
             </div>
@@ -433,11 +472,17 @@ const App = () => {
               <div className="flex items-center gap-1 md:gap-2 text-gray-500 font-bold text-[10px] md:text-xs mb-1 uppercase">
                 <Icons.Stamp size={12} /> 금일 입국심사
               </div>
-              <div className="text-lg md:text-xl font-black text-blue-900 font-mono">
+              <div className="text-lg md:text-xl font-black text-purple-900 font-mono">
                 {Number(globalStats.todayStickers || 0).toLocaleString()}
               </div>
             </div>
           </div>
+
+          {cooldownSeconds > 0 && (
+            <div className="mt-3 text-xs md:text-sm text-purple-700 font-bold">
+              AI 쿨다운 중: {cooldownSeconds}초 후 다시 시도할 수 있어요.
+            </div>
+          )}
         </div>
       </header>
 
@@ -458,31 +503,35 @@ const App = () => {
                     relative cursor-pointer transition-all duration-300 ease-out transform
                     ${!isClickable ? 'opacity-60 grayscale' : 'hover:-translate-y-1 hover:shadow-2xl active:scale-95'}
                     rounded-lg md:rounded-xl p-0 min-h-[160px] md:min-h-[220px] flex flex-col shadow-lg overflow-hidden
-                    bg-[#152e58] border-r-4 border-b-4 border-[#0e1d3a]
+                    bg-[#4b2c70] border-r-4 border-b-4 border-[#361f52]
                   `}
                 >
-                  <div className="flex flex-col items-center justify-between h-full py-4 px-2 text-[#c5b358] text-center relative">
-                    <div className="absolute top-2 right-2 bg-[#c5b358] text-[#152e58] text-[9px] md:text-[10px] font-black px-1.5 py-0.5 rounded">
+                  <div className="flex flex-col items-center justify-between h-full py-4 px-2 text-[#d8c2ff] text-center relative">
+                    <div className="absolute top-2 right-2 bg-[#d8c2ff] text-[#4b2c70] text-[9px] md:text-[10px] font-black px-1.5 py-0.5 rounded">
                       {item.date}
                     </div>
+
                     <div className="mt-2">
                         <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">대한민국</p>
                         <p className="text-[6px] md:text-[8px] font-serif tracking-tighter opacity-80 mt-0.5">REPUBLIC OF KOREA</p>
                     </div>
+
                     <div className="my-2 opacity-90">
-                        <Icons.KoreaEmblem size={48} className="md:w-[60px] md:h-[60px] text-[#c5b358]" />
+                        <Icons.KoreaEmblem size={48} className="md:w-[60px] md:h-[60px] text-[#d8c2ff]" />
                     </div>
+
                     <div className="mb-2">
                         <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">여권</p>
                         <p className="text-[6px] md:text-[8px] font-serif tracking-wider opacity-80 mt-0.5">PASSPORT</p>
                     </div>
+                    
                     {!isClickable && (
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                             <Icons.Lock size={24} className="text-white/70" />
                         </div>
                     )}
                   </div>
-                  <div className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#0a1629] opacity-50"></div>
+                  <div className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#2a163a] opacity-50"></div>
                 </div>
               );
             }
@@ -499,9 +548,9 @@ const App = () => {
               >
                 <div className={`
                     h-8 md:h-10 w-full flex items-center justify-between px-3 text-white font-bold text-xs md:text-sm uppercase tracking-widest border-b-2 border-dashed border-white/30
-                    ${item.type === 'sun' ? 'bg-orange-500' : 
-                      item.type === 'holy' ? 'bg-red-700' : 
-                      'bg-blue-800'}
+                    ${item.type === 'sun' ? 'bg-purple-500' : 
+                      item.type === 'holy' ? 'bg-purple-800' : 
+                      'bg-purple-700'}
                 `}>
                     <span>VISA</span>
                     <span>{item.date}</span>
@@ -511,6 +560,7 @@ const App = () => {
                   <div className="absolute inset-0 flex items-center justify-center opacity-[0.07] pointer-events-none">
                       <Icons.KoreaEmblem size={120} />
                   </div>
+
                   <div className="z-10 text-center w-full mt-1">
                         <p className="text-xs md:text-base font-black text-slate-800 break-keep leading-tight mb-3 font-serif">
                             {item.text}
@@ -519,15 +569,16 @@ const App = () => {
                         <div className="flex flex-col gap-1.5 w-full">
                             {item.verse && (
                                 <button 
-                                onClick={(e) => openVersePopup(e, item)}
-                                className="w-full bg-white/80 border border-blue-200 text-blue-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-blue-50 font-bold flex items-center justify-center gap-1 backdrop-blur-sm"
+                                onClick={(e) => openVersePopup(e, item, index)}
+                                className="w-full bg-white/80 border border-purple-200 text-purple-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-purple-50 font-bold flex items-center justify-center gap-1 backdrop-blur-sm"
                                 >
                                 <Icons.Ticket size={12} /> 탑승권({item.verse})
                                 </button>
                             )}
                             <button 
                                 onClick={(e) => { e.stopPropagation(); generatePrayer(item); }}
-                                className="w-full bg-blue-50/80 border border-blue-200 text-blue-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-blue-100 font-bold flex items-center justify-center gap-1 backdrop-blur-sm"
+                                disabled={loading || cooldownSeconds > 0}
+                                className="w-full bg-purple-50/80 border border-purple-200 text-purple-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-purple-100 font-bold flex items-center justify-center gap-1 backdrop-blur-sm disabled:opacity-50"
                             >
                                 <Icons.Headset size={12} /> 기내 기도
                             </button>
@@ -535,7 +586,7 @@ const App = () => {
                     </div>
 
                   {isComp && (
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-15deg] border-4 border-double border-red-600/70 rounded-full px-2 py-2 text-red-600/70 font-black text-xs md:text-sm uppercase tracking-widest z-20 pointer-events-none animate-in zoom-in duration-300 bg-white/10 backdrop-blur-[1px] w-20 h-20 flex items-center justify-center shadow-sm">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-15deg] border-4 border-double border-purple-600/70 rounded-full px-2 py-2 text-purple-600/70 font-black text-xs md:text-sm uppercase tracking-widest z-20 pointer-events-none animate-in zoom-in duration-300 bg-white/10 backdrop-blur-[1px] w-20 h-20 flex items-center justify-center shadow-sm">
                         <div className="text-center leading-none">
                             DEPARTED<br/>
                             <span className="text-[8px]">{item.date}</span>
@@ -552,12 +603,12 @@ const App = () => {
       {/* Bible Modal */}
       {selectedVerse && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-[#fdfbf7] rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden border-[10px] border-blue-900 relative">
-            <div className="bg-blue-900 p-4 flex justify-between items-center text-white border-b-4 border-yellow-400">
+          <div className="bg-[#fdfbf7] rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden border-[10px] border-purple-900 relative">
+            <div className="bg-purple-900 p-4 flex justify-between items-center text-white border-b-4 border-purple-400">
               <div className="flex items-center gap-3">
-                <Icons.Ticket size={24} className="text-yellow-400" />
+                <Icons.Ticket size={24} className="text-purple-300" />
                 <div>
-                    <h3 className="text-sm font-light text-blue-200 uppercase tracking-widest">Boarding Pass</h3>
+                    <h3 className="text-sm font-light text-purple-200 uppercase tracking-widest">Boarding Pass</h3>
                     <h2 className="text-xl font-black">오늘의 말씀</h2>
                 </div>
               </div>
@@ -568,8 +619,17 @@ const App = () => {
               <p className="text-lg md:text-2xl font-black text-slate-800 leading-snug mb-6 break-keep px-4 font-serif italic">
                 "{String(selectedVerse.fullVerse).split(' (')[0]}"
               </p>
-              <div className="inline-block px-6 py-2 bg-blue-100 text-blue-900 rounded-full font-black text-sm md:text-lg border border-blue-200 mb-8">
+              <div className="inline-block px-6 py-2 bg-purple-100 text-purple-900 rounded-full font-black text-sm md:text-lg border border-purple-200 mb-6">
                 GATE: {selectedVerse.verse}
+              </div>
+
+              <div className="flex gap-2 justify-center mb-6">
+                <button
+                  onClick={resetSelectedDay}
+                  className="px-4 py-2 rounded-full bg-purple-50 border border-purple-200 text-purple-900 font-bold text-sm hover:bg-purple-100"
+                >
+                  잘못 열었어요 (되돌리기)
+                </button>
               </div>
               
               <div className="mt-2 p-4 bg-gray-100 rounded-xl border border-gray-200 text-left">
@@ -582,16 +642,21 @@ const App = () => {
                     value={question}
                     onChange={(e) => setQuestion(e.target.value)}
                     placeholder="말씀에 대해 궁금한 점을 물어보세요"
-                    className="flex-grow p-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:border-blue-500"
+                    className="flex-grow p-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:border-purple-500"
                   />
                   <button 
                     onClick={() => askQuestion(selectedVerse)}
-                    disabled={loading}
-                    className="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-bold"
+                    disabled={loading || cooldownSeconds > 0}
+                    className="bg-purple-600 text-white p-3 rounded-lg hover:bg-purple-700 disabled:opacity-50 font-bold"
                   >
                     {loading ? <Icons.Loader2 className="animate-spin" size={20} /> : "전송"}
                   </button>
                 </div>
+                {cooldownSeconds > 0 && (
+                  <p className="mt-2 text-xs text-purple-700 font-bold">
+                    AI 쿨다운: {cooldownSeconds}초 후 다시 시도할 수 있어요.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -609,15 +674,15 @@ const App = () => {
               </div>
               <button onClick={() => setResult(null)} className="text-gray-400 hover:text-white"><Icons.X size={24} /></button>
             </div>
-            <div className="p-8 bg-sky-50 text-center">
-              <div className="bg-white p-6 rounded-xl border border-sky-100 shadow-sm mb-6 max-h-[300px] overflow-y-auto">
+            <div className="p-8 bg-purple-50 text-center">
+              <div className="bg-white p-6 rounded-xl border border-purple-100 shadow-sm mb-6 max-h-[300px] overflow-y-auto">
                 <p className="text-base md:text-xl font-medium text-slate-700 leading-relaxed break-keep whitespace-pre-wrap font-serif">
                   {String(result.content)}
                 </p>
               </div>
               <button 
                 onClick={() => setResult(null)}
-                className="w-full bg-blue-600 text-white py-4 rounded-xl text-lg font-black shadow-lg hover:bg-blue-700 transition-all active:scale-95"
+                className="w-full bg-purple-600 text-white py-4 rounded-xl text-lg font-black shadow-lg hover:bg-purple-700 transition-all active:scale-95"
               >
                 확인 완료
               </button>
@@ -628,11 +693,11 @@ const App = () => {
 
       {/* Global Loading Overlay */}
       {loading && !result && (
-        <div className="fixed inset-0 z-[200] bg-sky-900/40 backdrop-blur-md flex flex-col items-center justify-center p-6">
+        <div className="fixed inset-0 z-[200] bg-purple-900/40 backdrop-blur-md flex flex-col items-center justify-center p-6">
           <div className="relative">
             <div className="absolute inset-0 border-4 border-dashed border-white/30 rounded-full animate-[spin_4s_linear_infinite]"></div>
             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-2xl">
-                <Icons.Loader2 size={40} className="text-blue-500 animate-spin" />
+                <Icons.Loader2 size={40} className="text-purple-500 animate-spin" />
             </div>
           </div>
           <p className="mt-8 text-xl font-black text-white drop-shadow-md text-center">
@@ -643,19 +708,19 @@ const App = () => {
 
       {/* Intro Overlay */}
       {showIntro && (
-        <div className="fixed inset-0 z-[110] bg-blue-900/90 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[110] bg-purple-900/90 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="max-w-md w-full bg-white rounded-3xl overflow-hidden shadow-2xl relative">
-            <div className="bg-blue-600 p-8 text-center text-white relative overflow-hidden">
+            <div className="bg-purple-600 p-8 text-center text-white relative overflow-hidden">
                 <Icons.PlaneTakeoff size={48} className="mx-auto mb-4 relative z-10" />
                 <h2 className="text-2xl font-black relative z-10">환영합니다, 승객 여러분!</h2>
             </div>
             <div className="p-8 pt-2 bg-white text-center">
               <p className="text-gray-600 mb-6 font-bold leading-relaxed">
-                예수님과 함께하는 <span className="text-blue-600">40일간의 천국 여행</span>을<br/>시작할 준비가 되셨나요?
+                예수님과 함께하는 <span className="text-purple-600">40일간의 천국 여행</span>을<br/>시작할 준비가 되셨나요?
               </p>
               <button 
                 onClick={() => setShowIntro(false)}
-                className="w-full bg-blue-900 text-white py-4 rounded-xl text-xl font-black shadow-xl transition-transform active:scale-95 flex items-center justify-center gap-2"
+                className="w-full bg-purple-900 text-white py-4 rounded-xl text-xl font-black shadow-xl transition-transform active:scale-95 flex items-center justify-center gap-2"
               >
                 <Icons.Ticket size={24} /> 탑승 수속 완료
               </button>
@@ -665,22 +730,23 @@ const App = () => {
       )}
 
       <footer className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[95%] max-w-md bg-white/90 backdrop-blur-md rounded-full shadow-2xl border border-gray-200 p-2 flex items-center justify-between px-6 z-50 no-print">
-        <button onClick={() => window.print()} className="flex flex-col items-center text-gray-500 hover:text-blue-600">
+        <button onClick={() => window.print()} className="flex flex-col items-center text-gray-500 hover:text-purple-600">
           <Icons.Printer size={18} />
           <span className="text-[9px] font-bold mt-0.5">티켓 출력</span>
         </button>
+        
         <div className="flex flex-col items-center">
           <div className="flex items-center gap-1">
-             <Icons.Stamp size={14} className="text-red-500" />
-             <span className="text-lg font-black text-blue-900">{completedCount}</span>
+             <Icons.Stamp size={14} className="text-purple-500" />
+             <span className="text-lg font-black text-purple-900">{completedCount}</span>
           </div>
           <span className="text-[9px] font-bold text-gray-400 uppercase">Stamps Collected</span>
         </div>
       </footer>
 
       <style dangerouslySetInnerHTML={{ __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap');
-        body { font-family: 'Nanum Gothic', sans-serif; -webkit-tap-highlight-color: transparent; }
+        @import url('https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&display=swap');
+        body { font-family: 'Gaegu', sans-serif; -webkit-tap-highlight-color: transparent; }
         .break-keep { word-break: keep-all; }
         @media print {
           .fixed, footer, .no-print, .absolute { display: none !important; }
