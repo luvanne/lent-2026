@@ -18,7 +18,7 @@ export default async function handler(req, res) {
         { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
         { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
       ],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 800 }
+      generationConfig: { temperature: 0.6, maxOutputTokens: 1200 }
     };
 
     const response = await fetch(url, {
