@@ -1,4 +1,3 @@
-// [2026-02-04 업데이트 완료] 배포 에러 해결을 위한 최종 수정본입니다.
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -15,6 +14,11 @@ import {
   getDoc 
 } from 'firebase/firestore';
 
+// ==============================================================================
+// [배포 전용 최종 수정 버전 - 모델명 교체] 
+// AI 모델을 안정적인 'gemini-1.5-flash' 정식 버전으로 변경했습니다.
+// ==============================================================================
+
 // 1. Firebase 설정값
 const YOUR_FIREBASE_CONFIG = {
   apiKey: "AIzaSyBzBMFGGSMbbKJHE1KypFtnCjv7ea4m0eA",
@@ -29,12 +33,14 @@ const YOUR_FIREBASE_CONFIG = {
 // 2. Gemini API 키
 const YOUR_GEMINI_API_KEY = "AIzaSyCJNyeJcCIW8blSV64SyV8TV3mFqOK3E"; 
 
+// ==============================================================================
+
 // --- 환경 설정 ---
 const firebaseConfig = YOUR_FIREBASE_CONFIG;
 const apiKey = YOUR_GEMINI_API_KEY; 
 const appId = 'lent-2026-flight-v1'; // 배포용 고유 ID
 
-// Firebase 초기화 (안전 장치 추가)
+// Firebase 초기화
 let app, auth, db;
 try {
   app = initializeApp(firebaseConfig);
@@ -174,7 +180,8 @@ const Icons = {
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const fetchGemini = async (prompt, systemPrompt = "") => {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+  // [수정됨] 안정적인 정식 모델명(gemini-1.5-flash) 사용
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
     systemInstruction: { parts: [{ text: systemPrompt }] }
@@ -188,12 +195,17 @@ const fetchGemini = async (prompt, systemPrompt = "") => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (!response.ok) throw new Error('API request failed');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Gemini API Error: ${response.status}`, errorText);
+        throw new Error(`API request failed: ${response.status}`);
+      }
       const data = await response.json();
       return data.candidates?.[0]?.content?.parts?.[0]?.text;
     } catch (err) {
+      console.warn(`Retry attempt ${i+1} failed:`, err);
       if (i === 4) throw err;
-      await wait(delay); // 안전한 wait 함수 사용
+      await wait(delay);
       delay *= 2;
     }
   }
