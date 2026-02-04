@@ -18,7 +18,7 @@ export default async function handler(req, res) {
         { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
         { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
       ],
-      generationConfig: { temperature: 0.6, maxOutputTokens: 1200 }
+      generationConfig: { temperature: 0.4, maxOutputTokens: 1200, stopSequences: ["[END]"] }
     };
 
     const response = await fetch(url, {
@@ -30,7 +30,8 @@ export default async function handler(req, res) {
     const data = await response.json();
     if (!response.ok) return res.status(500).json({ error: data?.error?.message || "Gemini error" });
 
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    text = text.replace("[END]", "").trim();
     return res.status(200).json({ text });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
