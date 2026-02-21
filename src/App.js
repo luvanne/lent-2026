@@ -22,6 +22,7 @@ import {
 // - 전체 리셋 버튼
 // - "오늘의 기도" -> "아멘" 버튼 누르면 스티커 찍힘
 // - AI 사용 제한: 질문 3회, 오늘의 기도 1회 (매일 리셋)
+// - 하루 새 여권 3개까지만 열림
 // ==============================================================================
 
 // 1. Firebase 설정값
@@ -29,7 +30,7 @@ const YOUR_FIREBASE_CONFIG = {
   apiKey: "AIzaSyBzBMFGGSMbbKJHE1KypFtnCjv7ea4m0eA",
   authDomain: "lent-2026.firebaseapp.com",
   projectId: "lent-2026",
-  storageBucket: "lent-2026.firebasestorage.app",
+  storageBucket: "lent-2026.firebaseapp.com",
   messagingSenderId: "299793602291",
   appId: "1:299793602291:web:27c7c3d0c5cac505260986",
   measurementId: "G-4SCP59GKZ7"
@@ -228,6 +229,9 @@ const App = () => {
   const remainingPrayer = Math.max(0, maxPrayer - aiCounts.prayer);
   const remainingQuestion = Math.max(0, maxQuestion - aiCounts.question);
 
+  const [revealCounts, setRevealCounts] = useState({ count: 0, lastResetDate: getTodayKey() });
+  const maxDailyReveals = 3;
+
   const calendarData = [
     { date: "2/22", text: "예수님은 우리를 부르시는 분이십니다.", verse: "마 4:19", type: "sun", fullVerse: "나를 따라오라 내가 너희를 사람을 낚는 어부가 되게 하리라" },
     { date: "2/23", text: "예수님은 쉬게 하시는 분이십니다.", verse: "마 11:28", type: "normal", fullVerse: "수고하고 무거운 짐 진 자들아 다 내게로 오라 내가 너희를 쉬게 하리라" },
@@ -315,6 +319,7 @@ const App = () => {
         setCompletedDays(d.completedDays || {});
 
         const today = getTodayKey();
+
         const incoming = d.aiCounts || {};
         let nextCounts = {
           prayer: incoming.prayer || 0,
@@ -327,6 +332,19 @@ const App = () => {
           saveAiCounts(nextCounts);
         } else {
           setAiCounts(nextCounts);
+        }
+
+        const incomingReveal = d.revealCounts || {};
+        let nextReveal = {
+          count: incomingReveal.count || 0,
+          lastResetDate: incomingReveal.lastResetDate || today
+        };
+        if (nextReveal.lastResetDate !== today) {
+          nextReveal = { count: 0, lastResetDate: today };
+          setRevealCounts(nextReveal);
+          saveRevealCounts(nextReveal);
+        } else {
+          setRevealCounts(nextReveal);
         }
       }
     }, (err) => console.error("데이터 동기화 오류:", err));
@@ -371,6 +389,19 @@ const App = () => {
     }
   };
 
+  const saveRevealCounts = async (newCounts) => {
+    if (!user || !db) return;
+    try {
+      const progressRef = doc(db, 'artifacts', appId, 'users', user.uid, 'progress', 'current');
+      await setDoc(progressRef, {
+        revealCounts: newCounts,
+        updatedAt: new Date()
+      }, { merge: true });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const ensureDailyReset = async () => {
     const today = getTodayKey();
     if (aiCounts.lastResetDate !== today) {
@@ -386,14 +417,17 @@ const App = () => {
     if (!window.confirm("전체 진행을 초기화할까요?")) return;
     const empty = {};
     const resetCounts = { prayer: 0, question: 0, lastResetDate: getTodayKey() };
+    const resetReveal = { count: 0, lastResetDate: getTodayKey() };
     setRevealedDays(empty);
     setCompletedDays(empty);
     setSelectedVerse(null);
     setResult(null);
     setPendingCompleteIndex(null);
     setAiCounts(resetCounts);
+    setRevealCounts(resetReveal);
     await saveToCloud(empty, empty, false);
     await saveAiCounts(resetCounts);
+    await saveRevealCounts(resetReveal);
   };
 
   const handleDayClick = (index) => {
@@ -408,6 +442,23 @@ const App = () => {
     let isNew = false;
 
     if (!revealedDays[index]) {
+      const today = getTodayKey();
+      let nextReveal = { ...revealCounts };
+
+      if (nextReveal.lastResetDate !== today) {
+        nextReveal = { count: 0, lastResetDate: today };
+      }
+
+      if (nextReveal.count >= maxDailyReveals) {
+        setAlertMessage("하루에 3개까지만 열 수 있어요.");
+        setTimeout(() => setAlertMessage(""), 3000);
+        return;
+      }
+
+      nextReveal.count += 1;
+      setRevealCounts(nextReveal);
+      saveRevealCounts(nextReveal);
+
       nRev[index] = true;
       setRevealedDays(nRev);
     } else {
@@ -444,7 +495,7 @@ const App = () => {
 
   const handleAiError = (err) => {
     const msg = err?.message || String(err);
-    const match = msg.match(/retry in ([\d.]+)s/i);
+    const match = msg.match(/retry in ([\\d.]+)s/i);
     if (match) {
       const sec = Math.ceil(parseFloat(match[1]));
       if (!Number.isNaN(sec)) setCooldownSeconds(sec);
@@ -466,7 +517,7 @@ const App = () => {
       return;
     }
     setPendingCompleteIndex(index);
-    setLoadingText("기내 방송실에서 기도문을 작성 중입니다...");
+    setLoadingText("기내 방송실에서 작성 중입니다...");
     setLoading(true);
     setResult(null);
     try {
