@@ -470,7 +470,7 @@ const App = () => {
     setLoading(true);
     setResult(null);
     try {
-      const sys = "당신은 주일학교 선생님이자 비행기 기장입니다. 어린이의 눈높이에서 따뜻한 기도문을 3~5문장 이내로 써주세요. '사랑하는 승객 예수님'으로 시작하고 마지막은 '아멘'으로 끝내주세요.";
+      const sys = "당신은 주일학교 선생님이자 비행기 기장입니다. 어린이의 눈높이에서 따뜻한 기도문을 3~5문장 이내로 써주세요. '사랑하는 예수님'으로 시작하고 마지막은 '예수님 이름으로 기도합니다. 아멘'으로 끝내주세요.";
       const res = await fetchGemini(`주제: ${item.text}, 구절: ${item.fullVerse}`, sys);
       const newCounts = { ...counts, prayer: counts.prayer + 1 };
       setAiCounts(newCounts);
@@ -812,7 +812,7 @@ const App = () => {
             </div>
             <div className="p-8 pt-2 bg-white text-center">
               <p className="text-gray-600 mb-6 font-bold leading-relaxed">
-                예수님과 함께하는 <span className="text-purple-600">40일간의 천국 여행</span>을<br/>시작할 준비가 되셨나요?
+                예수님과 함께하는 <span className="text-purple-600">40일간의 말씀 여행</span>을<br/>시작할 준비가 되셨나요?
               </p>
               <button 
                 onClick={() => setShowIntro(false)}
