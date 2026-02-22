@@ -1,64 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  onSnapshot, 
-  increment, 
-  getDoc 
-} from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot, increment, getDoc } from 'firebase/firestore';
 
-// ==============================================================================
-// [배포 전용 최종 수정 버전 - Vercel Functions 프록시 적용]
-// - Gemini 호출: /api/gemini
-// - 보라색 테마 + 귀여운 폰트
-// - 쿨다운 타이머
-// - 전체 리셋 버튼
-// - "오늘의 기도" -> "아멘" 버튼 누르면 스티커 찍힘
-// - AI 사용 제한: 질문 3회, 오늘의 기도 1회 (매일 리셋)
-// - 하루 새 여권 3개까지만 열림
-// ==============================================================================
-
-// 1. Firebase 설정값
 const YOUR_FIREBASE_CONFIG = {
   apiKey: "AIzaSyBzBMFGGSMbbKJHE1KypFtnCjv7ea4m0eA",
   authDomain: "lent-2026.firebaseapp.com",
   projectId: "lent-2026",
-  storageBucket: "lent-2026.firebaseapp.com",
+  storageBucket: "lent-2026.firebasestorage.app",
   messagingSenderId: "299793602291",
   appId: "1:299793602291:web:27c7c3d0c5cac505260986",
   measurementId: "G-4SCP59GKZ7"
 };
 
-// --- 환경 설정 ---
 const firebaseConfig = YOUR_FIREBASE_CONFIG;
-const appId = 'lent-2026-flight-v1'; 
+const appId = "lent-2026-flight-v1";
 
 const getTodayKey = () => {
   const now = new Date();
   const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 };
 
-// Firebase 초기화
-let app, auth, db;
+const getTodayMonthDay = () => {
+  const now = new Date();
+  return `${now.getMonth() + 1}/${now.getDate()}`;
+};
+
+const dateToOrdinal = (dateString) => {
+  const [m, d] = String(dateString).split("/").map(Number);
+  return (m * 100) + d;
+};
+
+let app;
+let auth;
+let db;
 try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
 } catch (e) {
-  console.error("Firebase 초기화 에러:", e);
+  console.error("Firebase Initialization Error:", e);
 }
 
-// --- 아이콘 컴포넌트 ---
 const Icons = {
   Plane: ({ size = 24, className = "" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -138,24 +124,12 @@ const Icons = {
       <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
     </svg>
   ),
-  Globe: ({ size = 24, className = "" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="12" cy="12" r="10"></circle>
-      <line x1="2" y1="12" x2="22" y2="12"></line>
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-    </svg>
-  ),
   Users: ({ size = 24, className = "" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
       <circle cx="9" cy="7" r="4"></circle>
       <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
       <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-    </svg>
-  ),
-  Cloud: ({ size = 24, className = "" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M17.5 19c2.5 0 4.5-2 4.5-4.5 0-2.3-1.7-4.2-3.9-4.5C17.4 7 14.6 5 11.5 5 8.7 5 6.4 6.7 5.4 9.1 3 9.6 1 11.6 1 14.2c0 2.7 2.2 4.8 4.8 4.8h11.7"></path>
     </svg>
   ),
   Info: ({ size = 24, className = "" }) => (
@@ -184,7 +158,7 @@ const Icons = {
   ),
 };
 
-const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const fetchGemini = async (prompt, systemPrompt = "") => {
   let delay = 1000;
@@ -204,77 +178,141 @@ const fetchGemini = async (prompt, systemPrompt = "") => {
       delay *= 2;
     }
   }
+  return "";
 };
+
+const PRAYERS = [
+  `사랑하는 예수님, 저를 사람을 낚는 어부로 멋지게 불러주셔서 정말 감사합니다. 예수님이 부르실 때 기쁜 마음으로 "네!" 하고 대답하며 따라가는 제가 되고 싶어요. 제 친구들에게도 예수님의 사랑을 전해서 함께 천국에 가는 진짜 제자가 되게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 공부하고 친구 관계 때문에 힘들 때 저를 꼭 안아주시니 감사합니다. 마음이 무겁고 지칠 때마다 가장 먼저 예수님 품으로 달려가서 푹 쉬게 해주세요. 언제나 제 편이 되어주시는 예수님 덕분에 오늘도 씩씩하게 하루를 보낼 수 있어요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 무서운 일이나 걱정거리가 생길 때 "안심하라"고 말씀해 주셔서 감사합니다. 겁이 나고 떨릴 때마다 제 손을 꼭 잡고 계시는 예수님을 기억하게 해주세요. 크고 강하신 예수님이 저와 함께하시니 이제는 아무것도 두려워하지 않을래요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 저처럼 어리고 부족한 사람도 기쁘게 반겨주시고 안아주셔서 감사합니다. 저도 예수님처럼 주변에 혼자 있는 친구나 동생들에게 먼저 다가가서 친절하게 대해줄게요. 언제나 저를 최고로 사랑해 주시는 예수님 품에서 예쁜 마음을 가진 아이로 자라게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 십자가에서 목숨을 내어주실 만큼 저를 엄청나게 사랑해 주셔서 감사합니다. 예수님이 저를 사랑하신 것처럼, 저도 얄미운 마음을 버리고 친구들과 가족을 진짜로 사랑할래요. 제가 가는 곳마다 예수님의 따뜻한 사랑이 향기처럼 솔솔 퍼져나가게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 제 마음의 배고픔을 든든하게 채워주시는 진짜 생명의 떡이 되어주셔서 감사합니다. 게임이나 유튜브보다 예수님의 말씀을 읽고 듣는 것을 훨씬 더 좋아하게 해주세요. 매일매일 예수님이라는 든든한 밥을 먹고 영혼이 쑥쑥 자라나는 멋진 하나님의 자녀가 될래요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 캄캄한 세상을 환하게 비추는 가장 밝은 빛으로 오셔서 감사합니다. 제 마음속에 있는 나쁜 생각과 어두운 마음들을 예수님의 빛으로 환하게 몰아내 주세요. 저도 예수님을 닮아 학교와 학원에서 친구들에게 밝고 따뜻한 빛을 비추는 사람이 될래요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 안전하고 행복한 곳으로 들어가는 튼튼한 양의 문이 되어주셔서 감사합니다. 세상의 거짓말에 속지 않고 오직 예수님 문으로만 쏙 들어가서 참된 기쁨을 누리고 싶어요. 매일매일 예수님 문을 통과하며 하늘나라의 사랑을 가득 안고 살아가는 제가 되게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 저를 위해 생명까지 내어주시는 진짜 좋은 목자이심을 믿고 감사합니다. 길 잃은 양처럼 헤맬 때 저를 찾아와서 가장 안전한 길로 이끌어 주시니 참 든든해요. 언제나 다정하게 제 이름을 부르시는 예수님의 목소리를 잘 듣고 졸졸 따라가게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 죽음을 이기시고 다시 살아나셔서 저에게 영원한 생명을 주시니 감사합니다. 슬프고 어려운 일이 있어도 예수님이 이기셨다는 것을 기억하며 절대 포기하지 않을래요. 부활하신 예수님의 크고 놀라운 능력이 매일매일 제 삶에 가득 넘쳐나게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 천국으로 가는 단 하나의 길이 되어 주셔서 정말 감사합니다. 다른 길을 기웃거리지 않고 언제나 진짜 진리이신 예수님만 똑바로 보고 걸어가게 해주세요. 생명이신 예수님과 매일매일 손잡고 동행하며 가장 멋진 인생의 길을 걷고 싶어요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 저에게 생명을 듬뿍 주시는 튼튼한 포도나무가 되어주셔서 감사합니다. 저는 가지니까 예수님께 찰싹 붙어 있어서 매일 좋은 생각과 착한 행동의 열매를 맺고 싶어요. 제 힘으로는 할 수 없으니 예수님이 주시는 사랑과 지혜로 제 마음을 가득 채워주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 부족한 저를 세상을 환하게 비추는 예쁜 빛으로 불러주셔서 감사합니다. 제가 학교에서 친구들에게 배려하고 양보할 때마다 예수님의 빛이 반짝반짝 빛나게 해주세요. 어두운 곳을 밝히는 등대처럼 언제나 바르고 착한 모습으로 하나님을 기쁘시게 하는 제가 될래요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 저의 많은 잘못을 십자가에서 한 번에 싹 다 용서해 주셔서 감사합니다. 친구가 저를 속상하게 해도 예수님이 저를 용서하신 것처럼 너그럽게 안아주고 용서할래요. 꽁한 마음과 화나는 마음을 다 녹여주시고, 서로 사이좋게 지내는 멋진 피스메이커가 되게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 완벽한 사람이 아니라 죄 많고 아픈 사람들을 위해 오셔서 감사합니다. 마음이 다치고 병든 저를 불쌍히 여기시고 예수님의 사랑으로 호 불어서 낫게 해주세요. 저도 아프고 외로운 친구들의 마음을 알아주고 따뜻하게 위로해 주는 좋은 친구가 될래요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 높고 높은 하늘나라에서 이 땅에 오셔서 먼저 섬겨주신 모습을 찬양합니다. 반장이나 대장이 되어서 뽐내기보다, 뒤에서 조용히 친구들을 돕고 챙겨주는 멋진 사람이 되고 싶어요. 가장 낮아지신 예수님의 겸손한 모습을 배워서 나보다 남을 먼저 생각하는 넉넉한 마음을 주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 보잘것없고 작은 사람 한 명까지도 최고로 소중하게 여겨주시니 감사합니다. 나보다 약해 보이거나 인기가 없는 친구라도 예수님의 눈으로 바라보며 소중하게 대할래요. 친구들을 함부로 놀리거나 무시하지 않고 모두 다 똑같이 귀하게 여기는 예쁜 마음을 쑥쑥 키워주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 길을 잃고 헤매는 저를 끝까지 포기하지 않고 찾아내 주셔서 정말 감사합니다. 아직도 예수님을 몰라서 슬퍼하는 친구들을 향해 저도 사랑의 마음을 품고 다가가게 해주세요. 그 친구들에게 예수님이 얼마나 좋으신 분인지 자신 있게 자랑하는 꼬마 전도사가 될래요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 우리가 아파할 때 모른 척하지 않으시고 곁에서 함께 눈물 흘려주셔서 감사합니다. 저도 슬퍼하고 힘들어하는 친구가 있으면 곁에 다가가 어깨를 토닥여주며 같이 울어주는 사람이 될래요. 누군가에게 위로가 필요할 때 예수님의 따뜻한 마음으로 꼭 안아주는 포근한 아이로 자라게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 배고프고 아픈 사람들을 보며 불쌍히 여기시는 주님의 따뜻한 마음을 배웁니다. 제 욕심만 차리지 않고, 주변에 도움이 필요한 친구들을 보면 기꺼이 제 것을 나누어주게 해주세요. 예수님의 그 사랑스러운 눈빛으로 세상을 바라보며 착한 일에 앞장서는 제가 되게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 짜증 내거나 화내지 않으시고 언제나 부드럽고 겸손하신 모습을 쏙 빼닮고 싶어요. 제 마음대로 되지 않는다고 투정 부리기보다, 성령님이 주시는 참을성으로 예쁘게 말하게 해주세요. 친구들에게 잘난 척하기보다 늘 칭찬해주며 예수님을 닮은 다정한 아이가 되게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 걱정과 불안이 가득한 제 마음에 세상에서 가장 포근한 평안을 주시니 감사합니다. 시험이나 숙제 때문에 스트레스받을 때도 예수님이 주시는 평안 덕분에 새 힘을 얻게 해주세요. 제 마음속에 언제나 맑고 고요한 평화가 가득해서 친구들에게도 여유롭게 대할 수 있게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 언제 어디서나 세상 끝나는 날까지 저와 꼭 붙어 계시겠다고 약속해 주셔서 감사합니다. 혼자 있어서 외롭거나 모르는 곳에 가서 덜컥 겁이 날 때도 예수님이 옆에 계신다는 걸 기억할래요. 매일매일 예수님과 단짝 친구가 되어 속마음도 이야기하고 즐겁게 하루하루를 살아가게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, "너는 나를 누구라고 생각하니?" 하고 다정하게 물어봐 주셔서 감사합니다. 다른 사람들의 흉내가 아니라, 제 입술로 "예수님은 나의 진짜 구원자이십니다!"라고 씩씩하게 고백할래요. 머리로만 아는 예수님이 아니라, 제 삶 속에서 진짜로 만나고 매일 체험하는 나의 예수님이 되어주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 살아 계신 하나님의 아들이시며 온 세상을 구원하신 나의 그리스도이심을 믿습니다. 영화 속 멋진 히어로보다 더 강하고 위대하신 예수님이 저의 대장님이 되어주시니 정말 든든해요. 세상이 아무리 흔들려도 예수님이라는 튼튼한 바위 위에 굳게 서서 용기 있게 살아가는 믿음의 아이가 될래요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 가장 좋은 선물을 주시려고 기다리라고 말씀해 주셔서 감사합니다. 제 맘대로 빨리빨리 하려고 떼쓰지 않고, 기도하면서 예수님의 때를 얌전히 기다리는 지혜를 쑥쑥 키워주세요. 기다리는 시간 동안 불평하지 않고 감사하며 예수님이 주시는 진짜 좋은 것을 받을 준비를 할래요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 제 안에 들어오셔서 항상 도와주시는 멋진 성령님을 보내주셔서 감사합니다. 제 힘으로는 꾹 참기 힘들지만 성령님이 주시는 힘으로 나쁜 생각과 유혹을 휙 물리칠 수 있게 해주세요. 날마다 성령님과 즐겁게 대화하며 지혜롭고 씩씩한 하나님의 자녀로 쑥쑥 자라게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 하늘과 땅의 모든 힘과 능력을 다 가지신 진짜 왕이 되어주셔서 감사합니다. 전능하신 예수님이 저를 지켜주시니 어떤 힘든 일 앞에서도 기죽지 않고 당당하게 설래요. 모든 것을 다스리시는 예수님만 철석같이 믿고, 매일매일 나쁜 마음을 이기며 승리하는 제가 되게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 저에게 그냥 생명도 아니고 넘치도록 팡팡 터지는 풍성한 생명을 주셔서 감사합니다. 우울하고 재미없는 하루가 아니라 예수님 안에서 기쁨과 웃음이 가득한 신나는 매일을 보내게 해주세요. 사탄의 속임수에 넘어가지 않고, 예수님이 주시는 진짜 행복을 마음껏 누리며 밝게 자라게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 영광스러운 하늘 보좌에서 내려와 제 마음의 진짜 대장님이 되어주셔서 감사합니다. 제가 스스로 대장이 되려고 했던 고집을 꺾고, 오직 왕이신 예수님의 말씀에만 "네!" 하고 순종할래요. 진리이신 예수님의 다스림을 받으며 하늘나라 왕자님, 공주님답게 멋있고 바르게 살아가게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 저를 학교와 가정으로 보내셔서 예수님을 전하는 작은 선교사로 삼아주시니 감사합니다. 제 친구들에게 부끄러워하지 않고 예수님의 십자가 사랑을 자랑스럽게 쫑알쫑알 이야기하게 해주세요. 저의 작은 입술과 착한 행동을 통해서 주변 사람들이 예수님을 믿고 구원받는 놀라운 기적을 보여주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 제가 도움이 필요할 때마다 언제든 달려와 주시는 든든한 지원군이 되어주셔서 감사합니다. 실수하고 넘어져서 창피할 때도 혼내지 않으시는 예수님 품으로 제일 먼저 달려가 쏙 안기게 해주세요. 날마다 쏟아부어 주시는 예수님의 응원 덕분에 오늘도 내일도 다시 벌떡 일어나서 힘차게 뛰어가겠습니다. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 저를 데리러 이 땅에 다시 오시겠다고 약속해 주셔서 너무너무 기대되고 감사합니다. 예수님이 다시 오실 그날을 기다리며, 매일매일 제 마음의 방을 깨끗하고 예쁘게 청소해 놓을래요. 매일 하늘을 보며 설레는 마음으로 "예수님, 빨리 오세요!" 하고 기도하는 맑은 영혼을 지켜주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 멋진 백마 대신 작고 귀여운 나귀를 타시고 가장 겸손한 왕으로 오심을 찬양합니다. 친구들에게 잘난 척하고 뽐내기 좋아하는 제 마음을 고쳐주시고 언제나 벼처럼 고개 숙이는 겸손함을 주세요. 십자가를 지시려고 묵묵히 걸어가신 그 뒷모습을 따라 저도 묵묵히 착한 일을 하는 어린이가 될래요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 교회가 기도하는 집이라는 것을 가르쳐주시고 예배당을 소중하게 지켜주셔서 감사합니다. 저도 주일에 예배드릴 때 장난치거나 떠들지 않고, 하나님을 최고로 사랑하는 마음으로 멋지게 예배할래요. 제 마음속에도 나쁜 생각이 들어오지 못하도록 매일 기도로 싹싹 청소하는 깨끗한 아이가 되게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 온 마음을 다해 하나님을 사랑하고 친구들을 사랑하는 법을 알려주셔서 감사합니다. 스마트폰이나 놀기보다 하나님을 더 많이 사랑하고, 친구들에게 내 것을 양보하며 아껴줄래요. 예수님이 가르쳐주신 이 두 가지 진짜 사랑을 매일매일 실천하며 사랑 듬뿍 받는 아이로 자라게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 온 세상을 만드신 분이 가장 낮은 자리에서 저희를 섬겨주셔서 정말 감사합니다. 저도 집에서 부모님 어깨를 주물러 드리고, 학교에서 친구들을 도와주는 작은 일부터 실천할래요. 먼저 대접받으려고 떼쓰지 않고, 내가 먼저 다가가 섬겨주는 하늘나라의 진짜 큰 사람으로 쑥쑥 자라게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 십자가를 지시기 전날 밤까지도 제자들의 발을 씻겨주시며 끝까지 사랑해 주셔서 감사합니다. 친구들과 다투고 마음이 토라져도 예수님의 그 끝없는 사랑을 기억하며 제가 먼저 미안하다고 말할래요. 변덕스러운 제 마음도 절대 포기하지 않고 영원히 사랑해 주시는 예수님 사랑에 폭 안겨서 살게 해주세요. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 십자가에서 몹시 아프신 중에도 우리 죄를 다 용서해 주셔서 눈물 나게 감사합니다. 저의 못된 고집과 나쁜 말들 때문에 예수님이 대신 십자가를 지셨다는 것을 절대 잊지 않을래요. 저를 용서해 주신 그 크고 놀라운 십자가 사랑 덕분에 저도 친구들의 잘못을 너그럽게 덮어주는 아이가 되겠습니다. 예수님 이름으로 기도합니다. 아멘.`,
+  `사랑하는 예수님, 무서운 죽음을 팡! 깨뜨리시고 다시 살아나셔서 저희에게 최고로 기쁜 소식이 되어주셔서 감사합니다. 예수님이 이기셨으니 저도 어려운 문제나 힘든 일 앞에서도 쫄지 않고 당당하게 다시 일어설래요. 생명이 통통 튀어 오르는 부활의 기쁨을 온 세상 친구들에게 큰 소리로 외치며 날마다 신나게 살아가게 해주세요. 예수님 이름으로 기도합니다. 아멘.`
+];
+
+const WORDS = [
+  { date: "2/23", text: "예수님은 우리를 부르시는 분이십니다.", verse: "마태복음 4:19", fullVerse: "나를 따라오라 내가 너희를 사람을 낚는 어부가 되게 하리라" },
+  { date: "2/24", text: "예수님은 쉬게 하시는 분이십니다.", verse: "마태복음 11:28", fullVerse: "수고하고 무거운 짐 진 자들아 다 내게로 오라 내가 너희를 쉬게 하리라" },
+  { date: "2/25", text: "예수님은 두려워하지 말라 하시는 분이십니다.", verse: "마태복음 14:27", fullVerse: "안심하라 내니 두려워하지 말라" },
+  { date: "2/26", text: "예수님은 어린이를 환영하시는 분이십니다.", verse: "마가복음 10:14", fullVerse: "어린 아이들이 내게 오는 것을 용납하고 금하지 말라" },
+  { date: "2/27", text: "예수님은 사랑하라 말씀하시는 분이십니다.", verse: "요한복음 13:34", fullVerse: "서로 사랑하라 내가 너희를 사랑한 것 같이 너희도 서로 사랑하라" },
+  { date: "2/28", text: "예수님은 생명의 떡이십니다.", verse: "요한복음 6:35", fullVerse: "나는 생명의 떡이니 내게 오는 자는 결코 주리지 아니할 터이요" },
+  { date: "3/1", text: "예수님은 세상의 빛이십니다.", verse: "요한복음 8:12", fullVerse: "나는 세상의 빛이니 나를 따르는 자는 생명의 빛을 얻으리라" },
+  { date: "3/2", text: "예수님은 양의 문이십니다.", verse: "요한복음 10:7", fullVerse: "내가 진실로 진실로 너희에게 말하노니 내가 곧 양의 문이라" },
+  { date: "3/3", text: "예수님은 선한 목자이십니다.", verse: "요한복음 10:11", fullVerse: "나는 선한 목자라 선한 목자는 양들을 위하여 목숨을 버리거니와" },
+  { date: "3/4", text: "예수님은 부활이요 생명이십니다.", verse: "요한복음 11:25", fullVerse: "나는 부활이요 생명이니 나를 믿는 자는 죽어도 살겠고" },
+  { date: "3/5", text: "예수님은 길이요 진리요 생명이십니다.", verse: "요한복음 14:6", fullVerse: "내가 곧 길이요 진리요 생명이니 나로 말미암지 않고는 아버지께로 올 자가 없느니라" },
+  { date: "3/6", text: "예수님은 참 포도나무이십니다.", verse: "요한복음 15:1", fullVerse: "나는 참 포도나무요 내 아버지는 농부라" },
+  { date: "3/7", text: "예수님은 우리를 빛으로 부르시는 분이십니다.", verse: "마태복음 5:14", fullVerse: "너희는 세상의 빛이라" },
+  { date: "3/8", text: "예수님은 용서하라 하시는 분이십니다.", verse: "마태복음 18:22", fullVerse: "일곱 번뿐 아니라 일흔 번씩 일곱 번이라도 할지니라" },
+  { date: "3/9", text: "예수님은 아픈 사람을 도우러 오신 분이십니다.", verse: "마가복음 2:17", fullVerse: "내가 의인을 부르러 온 것이 아니요 죄인을 부르러 왔노라" },
+  { date: "3/10", text: "예수님은 섬김이 크다 하시는 분이십니다.", verse: "마태복음 23:11", fullVerse: "너희 중에 큰 자는 너희를 섬기는 자가 되어야 하리라" },
+  { date: "3/11", text: "예수님은 작은 사람을 소중히 여기시는 분이십니다.", verse: "마태복음 18:10", fullVerse: "이 작은 자 중의 하나라도 업신여기지 말라" },
+  { date: "3/12", text: "예수님은 잃은 자를 찾으시는 분이십니다.", verse: "누가복음 19:10", fullVerse: "인자가 온 것은 잃어버린 자를 찾아 구원하려 함이니라" },
+  { date: "3/13", text: "예수님은 함께 우시는 분이십니다.", verse: "요한복음 11:35", fullVerse: "예수께서 눈물을 흘리시더라" },
+  { date: "3/14", text: "예수님은 마음 아파하시는 분이십니다.", verse: "마태복음 14:14", fullVerse: "무리를 보시고 불쌍히 여기시니라" },
+  { date: "3/15", text: "예수님은 온유하고 겸손하신 분이십니다.", verse: "마태복음 11:29", fullVerse: "나는 마음이 온유하고 겸손하니" },
+  { date: "3/16", text: "예수님은 평안을 주시는 분이십니다.", verse: "요한복음 20:19", fullVerse: "너희에게 평강이 있을지어다" },
+  { date: "3/17", text: "예수님은 우리와 함께하시는 분이십니다.", verse: "마태복음 28:20", fullVerse: "내가 세상 끝날까지 너희와 항상 함께 있으리라" },
+  { date: "3/18", text: "예수님은 우리에게 질문하시는 분이십니다.", verse: "마태복음 16:15", fullVerse: "너희는 나를 누구라 하느냐" },
+  { date: "3/19", text: "예수님은 그리스도이십니다.", verse: "마태복음 16:16", fullVerse: "주는 그리스도시요 살아 계신 하나님의 아들이시니이다" },
+  { date: "3/20", text: "예수님은 기다리라 하시는 분이십니다.", verse: "사도행전 1:4", fullVerse: "아버지께서 약속하신 것을 기다리라" },
+  { date: "3/21", text: "예수님은 성령을 주시는 분이십니다.", verse: "요한복음 20:22", fullVerse: "성령을 받으라" },
+  { date: "3/22", text: "예수님은 모든 권세를 가지신 분이십니다.", verse: "마태복음 28:18", fullVerse: "하늘과 땅의 모든 권세를 내게 주셨으니" },
+  { date: "3/23", text: "예수님은 생명을 주시는 분이십니다.", verse: "요한복음 10:10", fullVerse: "내가 온 것은 양으로 생명을 얻게 하고 더 풍성히 얻게 하려는 것이라" },
+  { date: "3/24", text: "예수님은 우리의 왕이십니다.", verse: "요한복음 18:37", fullVerse: "내가 왕인 것을 네 말이 옳도다" },
+  { date: "3/25", text: "예수님은 우리를 보내시는 분이십니다.", verse: "마태복음 28:19", fullVerse: "너희는 가서 모든 민족을 제자로 삼으라" },
+  { date: "3/26", text: "예수님은 우리를 도우시는 분이십니다.", verse: "히브리서 4:16", fullVerse: "은혜의 보좌 앞에 담대히 나아갈 것이니라" },
+  { date: "3/27", text: "예수님은 다시 오실 분이십니다.", verse: "요한복음 14:3", fullVerse: "다시 와서 너희를 내게로 영접하여" },
+  { date: "3/28", text: "예수님은 겸손한 왕이십니다.", verse: "마태복음 21:5", fullVerse: "보라 네 왕이 네게 임하시나니 그는 겸손하여 나귀를 타시나니" },
+  { date: "3/29", text: "예수님은 하나님 집을 소중히 여기시는 분이십니다.", verse: "마태복음 21:13", fullVerse: "내 집은 기도하는 집이라 일컬음을 받을 것이라" },
+  { date: "3/30", text: "예수님은 가장 큰 사랑을 가르치시는 분이십니다.", verse: "마태복음 22:37–39", fullVerse: "네 마음을 다하고 목숨을 다하고 뜻을 다하여 주 너의 하나님을 사랑하라" },
+  { date: "3/31", text: "예수님은 섬기러 오신 분이십니다.", verse: "마가복음 10:45", fullVerse: "섬기려 하고 자기 목숨을 많은 사람의 대속물로 주려 함이니라" },
+  { date: "4/1", text: "예수님은 끝까지 사랑하시는 분이십니다.", verse: "요한복음 13:1", fullVerse: "자기 사람들을 사랑하시되 끝까지 사랑하시니라" },
+  { date: "4/2", text: "예수님은 우리를 용서하시는 분이십니다.", verse: "누가복음 23:34", fullVerse: "아버지여 저들을 사하여 주옵소서" },
+  { date: "4/3", text: "예수님은 다시 살아나신 분이십니다.", verse: "마태복음 28:6", fullVerse: "그가 여기 계시지 않고 살아나셨느니라" }
+];
+
+const calendarData = [
+  {
+    date: "2/22",
+    text: "우리는 40일동안 예수님을 알아가는 비행기에 탑승합니다",
+    verse: "",
+    fullVerse: "우리는 40일동안 예수님을 알아가는 비행기에 탑승합니다",
+    prayer: "",
+    type: "sun"
+  },
+  ...WORDS.map((word, index) => {
+    const dayNo = index + 1;
+    const isHoly = dayNo >= 34;
+    const isSun = ["3/1", "3/8", "3/15", "3/22", "3/29"].includes(word.date);
+    return {
+      ...word,
+      prayer: PRAYERS[index],
+      type: isHoly ? "holy" : (isSun ? "sun" : "normal")
+    };
+  })
+];
 
 const App = () => {
   const [user, setUser] = useState(null);
   const [completedDays, setCompletedDays] = useState({});
   const [revealedDays, setRevealedDays] = useState({});
+  const [completedAtTimes, setCompletedAtTimes] = useState({});
   const [selectedVerse, setSelectedVerse] = useState(null);
   const [showIntro, setShowIntro] = useState(true);
   const [alertMessage, setAlertMessage] = useState("");
   const [syncing, setSyncing] = useState(false);
-  const [pendingCompleteIndex, setPendingCompleteIndex] = useState(null);
 
   const [globalStats, setGlobalStats] = useState({ totalPilgrims: 0, todayStickers: 0 });
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("");
-  const [result, setResult] = useState(null); 
+  const [result, setResult] = useState(null);
   const [question, setQuestion] = useState("");
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [pendingCompleteIndex, setPendingCompleteIndex] = useState(null);
+  const [questionUsage, setQuestionUsage] = useState({ count: 0, lastResetDate: getTodayKey() });
 
-  const [aiCounts, setAiCounts] = useState({ prayer: 0, question: 0, lastResetDate: getTodayKey() });
-  const maxPrayer = 1;
-  const maxQuestion = 3;
-  const remainingPrayer = Math.max(0, maxPrayer - aiCounts.prayer);
-  const remainingQuestion = Math.max(0, maxQuestion - aiCounts.question);
+  const todayMonthDay = getTodayMonthDay();
+  const todayIndex = calendarData.findIndex((item) => item.date === todayMonthDay);
 
-  const [revealCounts, setRevealCounts] = useState({ count: 0, lastResetDate: getTodayKey() });
-  const maxDailyReveals = 3;
-
-  const calendarData = [
-  { date: "2/22", text: "우리는 40일동안 예수님을 알아가는 비행기에 탑승합니다", verse: "이륙하라!", type: "sun", fullVerse: "우리는 40일동안 예수님을 알아가는 비행기에 탑승합니다" },
-  { date: "2/23", text: "예수님은 우리를 부르시는 분이십니다.", verse: "마 4:19", type: "normal", fullVerse: "나를 따라오라 내가 너희를 사람을 낚는 어부가 되게 하리라" },
-  { date: "2/24", text: "예수님은 쉬게 하시는 분이십니다.", verse: "마 11:28", type: "normal", fullVerse: "수고하고 무거운 짐 진 자들아 다 내게로 오라 내가 너희를 쉬게 하리라" },
-  { date: "2/25", text: "예수님은 두려워하지 말라 하시는 분이십니다.", verse: "마 14:27", type: "normal", fullVerse: "안심하라 내니 두려워하지 말라" },
-  { date: "2/26", text: "예수님은 어린이를 환영하시는 분이십니다.", verse: "막 10:14", type: "normal", fullVerse: "어린 아이들이 내게 오는 것을 용납하고 금하지 말라" },
-  { date: "2/27", text: "예수님은 사랑하라 말씀하시는 분이십니다.", verse: "요 13:34", type: "normal", fullVerse: "서로 사랑하라 내가 너희를 사랑한 것 같이 너희도 서로 사랑하라" },
-  { date: "2/28", text: "예수님은 생명의 떡이십니다.", verse: "요 6:35", type: "normal", fullVerse: "나는 생명의 떡이니 내게 오는 자는 결코 주리지 아니할 터이요" },
-  { date: "3/1", text: "예수님은 세상의 빛이십니다.", verse: "요 8:12", type: "sun", fullVerse: "나는 세상의 빛이니 나를 따르는 자는 생명의 빛을 얻으리라" },
-  { date: "3/2", text: "예수님은 양의 문이십니다.", verse: "요 10:7", type: "normal", fullVerse: "내가 진실로 진실로 너희에게 말하노니 내가 곧 양의 문이라" },
-  { date: "3/3", text: "예수님은 선한 목자이십니다.", verse: "요 10:11", type: "normal", fullVerse: "나는 선한 목자라 선한 목자는 양들을 위하여 목숨을 버리거니와" },
-  { date: "3/4", text: "예수님은 부활이요 생명이십니다.", verse: "요 11:25", type: "normal", fullVerse: "나는 부활이요 생명이니 나를 믿는 자는 죽어도 살겠고" },
-  { date: "3/5", text: "예수님은 길이요 진리요 생명이십니다.", verse: "요 14:6", type: "normal", fullVerse: "내가 곧 길이요 진리요 생명이니 나로 말미암지 않고는 아버지께로 올 자가 없느니라" },
-  { date: "3/6", text: "예수님은 참 포도나무이십니다.", verse: "요 15:1", type: "normal", fullVerse: "나는 참 포도나무요 내 아버지는 농부라" },
-  { date: "3/7", text: "예수님은 우리를 빛으로 부르시는 분이십니다.", verse: "마 5:14", type: "normal", fullVerse: "너희는 세상의 빛이라" },
-  { date: "3/8", text: "예수님은 용서하라 하시는 분이십니다.", verse: "마 18:22", type: "sun", fullVerse: "일곱 번뿐 아니라 일흔 번씩 일곱 번이라도 할지니라" },
-  { date: "3/9", text: "예수님은 아픈 사람을 도우러 오신 분이십니다.", verse: "막 2:17", type: "normal", fullVerse: "내가 의인을 부르러 온 것이 아니요 죄인을 부르러 왔노라" },
-  { date: "3/10", text: "예수님은 섬김이 크다 하시는 분이십니다.", verse: "마 23:11", type: "normal", fullVerse: "너희 중에 큰 자는 너희를 섬기는 자가 되어야 하리라" },
-  { date: "3/11", text: "예수님은 작은 사람을 소중히 여기시는 분이십니다.", verse: "마 18:10", type: "normal", fullVerse: "이 작은 자 중의 하나라도 업신여기지 말라" },
-  { date: "3/12", text: "예수님은 잃은 자를 찾으시는 분이십니다.", verse: "눅 19:10", type: "normal", fullVerse: "인자가 온 것은 잃어버린 자를 찾아 구원하려 함이니라" },
-  { date: "3/13", text: "예수님은 함께 우시는 분이십니다.", verse: "요 11:35", type: "normal", fullVerse: "예수께서 눈물을 흘리시더라" },
-  { date: "3/14", text: "예수님은 마음 아파하시는 분이십니다.", verse: "마 14:14", type: "normal", fullVerse: "무리를 보시고 불쌍히 여기시니라" },
-  { date: "3/15", text: "예수님은 온유하고 겸손하신 분이십니다.", verse: "마 11:29", type: "sun", fullVerse: "나는 마음이 온유하고 겸손하니" },
-  { date: "3/16", text: "예수님은 평안을 주시는 분이십니다.", verse: "요 20:19", type: "normal", fullVerse: "너희에게 평강이 있을지어다" },
-  { date: "3/17", text: "예수님은 우리와 함께하시는 분이십니다.", verse: "마 28:20", type: "normal", fullVerse: "내가 세상 끝날까지 너희와 항상 함께 있으리라" },
-  { date: "3/18", text: "예수님은 우리에게 질문하시는 분이십니다.", verse: "마 16:15", type: "normal", fullVerse: "너희는 나를 누구라 하느냐" },
-  { date: "3/19", text: "예수님은 그리스도이십니다.", verse: "마 16:16", type: "normal", fullVerse: "주는 그리스도시요 살아 계신 하나님의 아들이시니이다" },
-  { date: "3/20", text: "예수님은 기다리라 하시는 분이십니다.", verse: "행 1:4", type: "normal", fullVerse: "아버지께서 약속하신 것을 기다리라" },
-  { date: "3/21", text: "예수님은 성령을 주시는 분이십니다.", verse: "요 20:22", type: "normal", fullVerse: "성령을 받으라" },
-  { date: "3/22", text: "예수님은 모든 권세를 가지신 분이십니다.", verse: "마 28:18", type: "sun", fullVerse: "하늘과 땅의 모든 권세를 내게 주셨으니" },
-  { date: "3/23", text: "예수님은 생명을 주시는 분이십니다.", verse: "요 10:10", type: "normal", fullVerse: "내가 온 것은 양으로 생명을 얻게 하고 더 풍성히 얻게 하려는 것이라" },
-  { date: "3/24", text: "예수님은 우리의 왕이십니다.", verse: "요 18:37", type: "normal", fullVerse: "내가 왕인 것을 네 말이 옳도다" },
-  { date: "3/25", text: "예수님은 우리를 보내시는 분이십니다.", verse: "마 28:19", type: "normal", fullVerse: "너희는 가서 모든 민족을 제자로 삼으라" },
-  { date: "3/26", text: "예수님은 우리를 도우시는 분이십니다.", verse: "히 4:16", type: "normal", fullVerse: "은혜의 보좌 앞에 담대히 나아갈 것이니라" },
-  { date: "3/27", text: "예수님은 다시 오실 분이십니다.", verse: "요 14:3", type: "normal", fullVerse: "다시 와서 너희를 내게로 영접하여" },
-  { date: "3/28", text: "예수님은 겸손한 왕이십니다.", verse: "마 21:5", type: "holy", fullVerse: "보라 네 왕이 네게 임하시나니 그는 겸손하여 나귀를 타시나니" },
-  { date: "3/29", text: "예수님은 하나님 집을 소중히 여기시는 분이십니다.", verse: "마 21:13", type: "holy", fullVerse: "내 집은 기도하는 집이라 일컬음을 받을 것이라" },
-  { date: "3/30", text: "예수님은 가장 큰 사랑을 가르치시는 분이십니다.", verse: "마 22:37-39", type: "holy", fullVerse: "네 마음을 다하고 목숨을 다하고 뜻을 다하여 주 너의 하나님을 사랑하라" },
-  { date: "3/31", text: "예수님은 섬기러 오신 분이십니다.", verse: "막 10:45", type: "holy", fullVerse: "섬기려 하고 자기 목숨을 많은 사람의 대속물로 주려 함이니라" },
-  { date: "4/1", text: "예수님은 끝까지 사랑하시는 분이십니다.", verse: "요 13:1", type: "holy", fullVerse: "자기 사람들을 사랑하시되 끝까지 사랑하시니라" },
-  { date: "4/2", text: "예수님은 우리를 용서하시는 분이십니다.", verse: "눅 23:34", type: "holy", fullVerse: "아버지여 저들을 사하여 주옵소서" },
-  { date: "4/3", text: "예수님은 다시 살아나신 분이십니다.", verse: "마 28:6", type: "holy", fullVerse: "그가 여기 계시지 않고 살아나셨느니라" }
-  ];
+  const openedUntilToday = calendarData.reduce((acc, item, idx) => {
+    return acc + (revealedDays[idx] && dateToOrdinal(item.date) <= dateToOrdinal(todayMonthDay) ? 1 : 0);
+  }, 0);
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -284,12 +322,62 @@ const App = () => {
     return () => clearInterval(timer);
   }, [cooldownSeconds]);
 
+  const saveToCloud = async (newRev, newComp, isNewComplete, newTimes = completedAtTimes) => {
+    if (!user || !db) return;
+    setSyncing(true);
+    try {
+      const progressRef = doc(db, "artifacts", appId, "users", user.uid, "progress", "current");
+      await setDoc(progressRef, {
+        revealedDays: newRev,
+        completedDays: newComp,
+        completedAtTimes: newTimes,
+        updatedAt: new Date()
+      }, { merge: true });
+
+      if (isNewComplete) {
+        const statsRef = doc(db, "artifacts", appId, "public", "data", "community", "totals");
+        await setDoc(statsRef, { todayStickers: increment(1) }, { merge: true });
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTimeout(() => setSyncing(false), 500);
+    }
+  };
+
+  const saveQuestionUsage = async (usage) => {
+    if (!user || !db) return;
+    try {
+      const progressRef = doc(db, "artifacts", appId, "users", user.uid, "progress", "current");
+      await setDoc(progressRef, {
+        questionUsage: usage,
+        updatedAt: new Date()
+      }, { merge: true });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const ensureQuestionDailyReset = async () => {
+    const today = getTodayKey();
+    if (questionUsage.lastResetDate !== today) {
+      const reset = { count: 0, lastResetDate: today };
+      setQuestionUsage(reset);
+      await saveQuestionUsage(reset);
+      return reset;
+    }
+    return questionUsage;
+  };
+
   useEffect(() => {
     if (!auth) return;
+
     const initAuth = async () => {
       try {
         await signInAnonymously(auth);
-      } catch (err) { console.error("인증 오류:", err); }
+      } catch (err) {
+        console.error("인증 오류:", err);
+      }
     };
     initAuth();
 
@@ -297,14 +385,16 @@ const App = () => {
       setUser(u);
       if (u && db) {
         try {
-          const statsRef = doc(db, 'artifacts', appId, 'public', 'data', 'community', 'totals');
-          const userInitRef = doc(db, 'artifacts', appId, 'users', u.uid, 'settings', 'initial');
+          const statsRef = doc(db, "artifacts", appId, "public", "data", "community", "totals");
+          const userInitRef = doc(db, "artifacts", appId, "users", u.uid, "settings", "initial");
           const snap = await getDoc(userInitRef);
           if (!snap.exists()) {
             await setDoc(userInitRef, { joined: true, timestamp: new Date() });
             await setDoc(statsRef, { totalPilgrims: increment(1) }, { merge: true });
           }
-        } catch (err) { console.error("초기화 오류:", err); }
+        } catch (err) {
+          console.error("초기화 오류:", err);
+        }
       }
     });
     return () => unsubscribe();
@@ -312,191 +402,55 @@ const App = () => {
 
   useEffect(() => {
     if (!user || !db) return;
-    const progressRef = doc(db, 'artifacts', appId, 'users', user.uid, 'progress', 'current');
-    const unsubPrivate = onSnapshot(progressRef, (snap) => {
-      if (snap.exists()) {
-        const d = snap.data();
-        setRevealedDays(d.revealedDays || {});
-        setCompletedDays(d.completedDays || {});
 
-        const today = getTodayKey();
+    const progressRef = doc(db, "artifacts", appId, "users", user.uid, "progress", "current");
+    const unsubPrivate = onSnapshot(progressRef, async (snap) => {
+      if (!snap.exists()) return;
+      const d = snap.data();
+      setRevealedDays(d.revealedDays || {});
+      setCompletedDays(d.completedDays || {});
+      setCompletedAtTimes(d.completedAtTimes || {});
 
-        const incoming = d.aiCounts || {};
-        let nextCounts = {
-          prayer: incoming.prayer || 0,
-          question: incoming.question || 0,
-          lastResetDate: incoming.lastResetDate || today
-        };
-        if (nextCounts.lastResetDate !== today) {
-          nextCounts = { prayer: 0, question: 0, lastResetDate: today };
-          setAiCounts(nextCounts);
-          saveAiCounts(nextCounts);
-        } else {
-          setAiCounts(nextCounts);
-        }
-
-        const incomingReveal = d.revealCounts || {};
-        let nextReveal = {
-          count: incomingReveal.count || 0,
-          lastResetDate: incomingReveal.lastResetDate || today
-        };
-        if (nextReveal.lastResetDate !== today) {
-          nextReveal = { count: 0, lastResetDate: today };
-          setRevealCounts(nextReveal);
-          saveRevealCounts(nextReveal);
-        } else {
-          setRevealCounts(nextReveal);
-        }
+      const today = getTodayKey();
+      const q = d.questionUsage || { count: 0, lastResetDate: today };
+      if (q.lastResetDate !== today) {
+        const reset = { count: 0, lastResetDate: today };
+        setQuestionUsage(reset);
+        await saveQuestionUsage(reset);
+      } else {
+        setQuestionUsage(q);
       }
-    }, (err) => console.error("데이터 동기화 오류:", err));
+    }, (err) => console.error("개인 데이터 동기화 오류:", err));
 
-    const statsRef = doc(db, 'artifacts', appId, 'public', 'data', 'community', 'totals');
+    const statsRef = doc(db, "artifacts", appId, "public", "data", "community", "totals");
     const unsubPublic = onSnapshot(statsRef, (snap) => {
       if (snap.exists()) setGlobalStats(snap.data());
-    }, (err) => console.error("통계 동기화 오류:", err));
+    }, (err) => console.error("공공 데이터 동기화 오류:", err));
 
-    return () => { unsubPrivate(); unsubPublic(); };
+    return () => {
+      unsubPrivate();
+      unsubPublic();
+    };
   }, [user]);
-
-  const saveToCloud = async (newRev, newComp, isNewComplete) => {
-    if (!user || !db) return;
-    setSyncing(true);
-    try {
-      const progressRef = doc(db, 'artifacts', appId, 'users', user.uid, 'progress', 'current');
-      await setDoc(progressRef, {
-        revealedDays: newRev,
-        completedDays: newComp,
-        updatedAt: new Date()
-      }, { merge: true });
-
-      if (isNewComplete) {
-        const statsRef = doc(db, 'artifacts', appId, 'public', 'data', 'community', 'totals');
-        await setDoc(statsRef, { todayStickers: increment(1) }, { merge: true });
-      }
-    } catch (err) { console.error(err); } 
-    finally { setTimeout(() => setSyncing(false), 500); }
-  };
-
-  const saveAiCounts = async (newCounts) => {
-    if (!user || !db) return;
-    try {
-      const progressRef = doc(db, 'artifacts', appId, 'users', user.uid, 'progress', 'current');
-      await setDoc(progressRef, {
-        aiCounts: newCounts,
-        updatedAt: new Date()
-      }, { merge: true });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const saveRevealCounts = async (newCounts) => {
-    if (!user || !db) return;
-    try {
-      const progressRef = doc(db, 'artifacts', appId, 'users', user.uid, 'progress', 'current');
-      await setDoc(progressRef, {
-        revealCounts: newCounts,
-        updatedAt: new Date()
-      }, { merge: true });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const ensureDailyReset = async () => {
-    const today = getTodayKey();
-    if (aiCounts.lastResetDate !== today) {
-      const reset = { prayer: 0, question: 0, lastResetDate: today };
-      setAiCounts(reset);
-      await saveAiCounts(reset);
-      return reset;
-    }
-    return aiCounts;
-  };
 
   const resetAllProgress = async () => {
     if (!window.confirm("전체 진행을 초기화할까요?")) return;
     const empty = {};
-    const resetCounts = { prayer: 0, question: 0, lastResetDate: getTodayKey() };
-    const resetReveal = { count: 0, lastResetDate: getTodayKey() };
+    const qReset = { count: 0, lastResetDate: getTodayKey() };
     setRevealedDays(empty);
     setCompletedDays(empty);
+    setCompletedAtTimes(empty);
     setSelectedVerse(null);
     setResult(null);
     setPendingCompleteIndex(null);
-    setAiCounts(resetCounts);
-    setRevealCounts(resetReveal);
-    await saveToCloud(empty, empty, false);
-    await saveAiCounts(resetCounts);
-    await saveRevealCounts(resetReveal);
-  };
-
-  const handleDayClick = (index) => {
-    if (index > 0 && !completedDays[index - 1]) {
-      setAlertMessage(`[탑승 불가] ${calendarData[index-1].date}의 여정을 먼저 마쳐주세요!`);
-      setTimeout(() => setAlertMessage(""), 3000);
-      return;
-    }
-
-    let nRev = { ...revealedDays };
-    let nComp = { ...completedDays };
-    let isNew = false;
-
-    if (!revealedDays[index]) {
-      const today = getTodayKey();
-      let nextReveal = { ...revealCounts };
-
-      if (nextReveal.lastResetDate !== today) {
-        nextReveal = { count: 0, lastResetDate: today };
-      }
-
-      if (nextReveal.count >= maxDailyReveals) {
-        setAlertMessage("하루에 3개까지만 열 수 있어요.");
-        setTimeout(() => setAlertMessage(""), 3000);
-        return;
-      }
-
-      nextReveal.count += 1;
-      setRevealCounts(nextReveal);
-      saveRevealCounts(nextReveal);
-
-      nRev[index] = true;
-      setRevealedDays(nRev);
-    } else {
-      isNew = !completedDays[index];
-      nComp[index] = isNew;
-      setCompletedDays(nComp);
-    }
-    saveToCloud(nRev, nComp, isNew);
-  };
-
-  const markCompleted = (index) => {
-    if (index === null || index === undefined) return;
-
-    if (index > 0 && !completedDays[index - 1]) {
-      setAlertMessage(`[탑승 불가] ${calendarData[index-1].date}의 여정을 먼저 마쳐주세요!`);
-      setTimeout(() => setAlertMessage(""), 3000);
-      return;
-    }
-
-    if (completedDays[index]) return;
-
-    const nRev = { ...revealedDays, [index]: true };
-    const nComp = { ...completedDays, [index]: true };
-
-    setRevealedDays(nRev);
-    setCompletedDays(nComp);
-    saveToCloud(nRev, nComp, true);
-  };
-
-  const openVersePopup = (e, item) => {
-    e.stopPropagation();
-    setSelectedVerse(item);
+    setQuestionUsage(qReset);
+    await saveToCloud(empty, empty, false, empty);
+    await saveQuestionUsage(qReset);
   };
 
   const handleAiError = (err) => {
     const msg = err?.message || String(err);
-    const match = msg.match(/retry in ([\\d.]+)s/i);
+    const match = msg.match(/retry in ([\d.]+)s/i);
     if (match) {
       const sec = Math.ceil(parseFloat(match[1]));
       if (!Number.isNaN(sec)) setCooldownSeconds(sec);
@@ -505,72 +459,106 @@ const App = () => {
     setTimeout(() => setAlertMessage(""), 4000);
   };
 
-  const generatePrayer = async (item, index) => {
-    const counts = await ensureDailyReset();
-    if (counts.prayer >= maxPrayer) {
-      setAlertMessage("오늘의 기도는 하루에 1번만 사용할 수 있어요.");
-      setTimeout(() => setAlertMessage(""), 3000);
+  const handleDayClick = (index) => {
+    const item = calendarData[index];
+    if (!item) return;
+    if (revealedDays[index]) return;
+
+    if (item.date !== todayMonthDay) {
+      setAlertMessage(`오늘(${todayMonthDay}) 여권만 열 수 있어요.`);
+      setTimeout(() => setAlertMessage(""), 2500);
       return;
     }
-    if (cooldownSeconds > 0) {
-      setAlertMessage(`AI 대기 ${cooldownSeconds}초 후에 다시 시도해주세요.`);
-      setTimeout(() => setAlertMessage(""), 2000);
+
+    const nRev = { ...revealedDays, [index]: true };
+    setRevealedDays(nRev);
+    saveToCloud(nRev, completedDays, false);
+  };
+
+  const markCompleted = (index) => {
+    if (index === null || index === undefined) return;
+    if (completedDays[index]) return;
+
+    const now = new Date();
+    const time24 = now.toLocaleTimeString("ko-KR", { hour12: false });
+    const nRev = { ...revealedDays, [index]: true };
+    const nComp = { ...completedDays, [index]: true };
+    const nTimes = { ...completedAtTimes, [index]: { iso: now.toISOString(), time24 } };
+
+    setRevealedDays(nRev);
+    setCompletedDays(nComp);
+    setCompletedAtTimes(nTimes);
+    saveToCloud(nRev, nComp, true, nTimes);
+  };
+
+  const openVersePopup = (e, item) => {
+    e.stopPropagation();
+    setSelectedVerse(item);
+  };
+
+  const generatePrayer = (item, index) => {
+    if (!item.prayer) {
+      setAlertMessage("준비일에는 오늘의 기도 내용이 없습니다.");
+      setTimeout(() => setAlertMessage(""), 2500);
       return;
     }
     setPendingCompleteIndex(index);
-    setLoadingText("기내 방송실에서 작성 중입니다...");
-    setLoading(true);
-    setResult(null);
-    try {
-      const sys = "당신은 주일학교 선생님이자 비행기 기장입니다. 어린이의 눈높이에서 따뜻한 기도문을 3~5문장 이내로 써주세요. '사랑하는 예수님'으로 시작하고 마지막은 '예수님 이름으로 기도합니다. 아멘'으로 끝내주세요.";
-      const res = await fetchGemini(`주제: ${item.text}, 구절: ${item.fullVerse}`, sys);
-      const newCounts = { ...counts, prayer: counts.prayer + 1 };
-      setAiCounts(newCounts);
-      saveAiCounts(newCounts);
-      setResult({ type: 'prayer', content: res || "예수님 사랑해요!", title: '✈️ 오늘의 기도' });
-    } catch (err) { 
-      console.error(err);
-      handleAiError(err);
-    } finally { setLoading(false); }
+    setResult({
+      type: "prayer",
+      title: "✈️ 오늘의 기도",
+      content: item.prayer
+    });
   };
 
   const askQuestion = async (item) => {
     if (!question.trim()) return;
-    const counts = await ensureDailyReset();
-    if (counts.question >= maxQuestion) {
-      setAlertMessage("질문은 하루에 3번까지만 가능해요.");
-      setTimeout(() => setAlertMessage(""), 3000);
+
+    const usage = await ensureQuestionDailyReset();
+    if (usage.count >= 1) {
+      setAlertMessage("AI 질문은 하루 1개만 가능합니다.");
+      setTimeout(() => setAlertMessage(""), 2500);
       return;
     }
+
     if (cooldownSeconds > 0) {
       setAlertMessage(`AI 대기 ${cooldownSeconds}초 후에 다시 시도해주세요.`);
       setTimeout(() => setAlertMessage(""), 2000);
       return;
     }
+
     setLoadingText("관제탑(AI)에 질문을 전송하고 있습니다...");
     setLoading(true);
+
     try {
       const sys = "당신은 지혜로운 주일학교 선생님입니다. 성경 말씀에 충실하게, 어린이의 눈높이에서 친절하고 이해하기 쉽게 4문장 이내로 답해주세요.";
       const res = await fetchGemini(`질문: ${question} (묵상 주제: ${item.text})`, sys);
-      const newCounts = { ...counts, question: counts.question + 1 };
-      setAiCounts(newCounts);
-      saveAiCounts(newCounts);
-      setResult({ type: 'qa', content: res || "조금 더 고민하고 알려줄게요!", title: '💁‍♀️ 안내 데스크 답변' });
+      const nextUsage = { count: usage.count + 1, lastResetDate: getTodayKey() };
+      setQuestionUsage(nextUsage);
+      await saveQuestionUsage(nextUsage);
+
+      setResult({
+        type: "qa",
+        content: res || "조금 더 고민하고 알려줄게요!",
+        title: "💁‍♀️ 안내 데스크 답변"
+      });
       setQuestion("");
-    } catch (err) { 
+    } catch (err) {
       console.error(err);
       handleAiError(err);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const completedCount = Object.values(completedDays).filter(Boolean).length;
   const progressPercent = Math.round((completedCount / calendarData.length) * 100);
   const aiLocked = loading || cooldownSeconds > 0;
+  const remainingQ = Math.max(0, 1 - questionUsage.count);
 
   return (
     <div className="min-h-screen bg-purple-50 font-sans p-4 md:p-8 pb-32 overflow-x-hidden text-slate-800 selection:bg-purple-200">
       {alertMessage && (
-        <div className="fixed top-6 md:top-10 left-1/2 -translate-x-1/2 z-[200] bg-purple-700 text-white px-4 md:px-6 py-3 rounded-md shadow-2xl flex items-center gap-3 font-bold animate-in fade-in slide-in-from-top-4 duration-300 text-sm md:text-base w-[90%] md:w-auto border-2 border-purple-400">
+        <div className="fixed top-6 md:top-10 left-1/2 -translate-x-1/2 z-[200] bg-purple-700 text-white px-4 md:px-6 py-3 rounded-md shadow-2xl flex items-center gap-3 font-bold text-sm md:text-base w-[90%] md:w-auto border-2 border-purple-400">
           <Icons.AlertCircle size={20} className="shrink-0" /> {String(alertMessage)}
         </div>
       )}
@@ -580,7 +568,7 @@ const App = () => {
           <Icons.PlaneTakeoff size={24} className="text-purple-200" />
           <span className="font-black tracking-widest uppercase">Flight 2026</span>
         </div>
-        <h1 className="text-3xl md:text-6xl font-black text-purple-900 mb-3 md:mb-4 drop-shadow-sm tracking-tighter leading-tight">
+        <h1 className="text-3xl md:text-6xl font-black text-purple-900 mb-3 md:mb-4 tracking-tighter leading-tight">
           사순절 40일 묵상 비행 플랜
         </h1>
         <div className="flex items-center justify-center gap-2 mb-4 text-purple-700">
@@ -590,10 +578,13 @@ const App = () => {
           </p>
         </div>
 
-        <div className="text-xs md:text-sm font-bold text-purple-700 mb-6">
-          안내: 오늘의 기도 1회, 질문 3회. 매일 자정 리셋 (남은 횟수: 기도 {remainingPrayer}회 / 질문 {remainingQuestion}회)
+        <div className="text-xs md:text-sm font-bold text-purple-700 mb-2">
+          AI 질문: 하루 1회(자정 리셋) / 오늘 열 수 있는 여권: {todayIndex >= 0 ? todayMonthDay : "기간 외"}
         </div>
-        
+        <div className="text-xs md:text-sm font-bold text-purple-700 mb-6">
+          오늘까지 열린 여권 수: {openedUntilToday}개
+        </div>
+
         <div className="bg-white rounded-xl md:rounded-2xl p-4 md:p-6 shadow-xl inline-block w-full max-w-2xl border-b-8 border-purple-900 relative overflow-hidden">
           <div className="flex items-center justify-between mb-3 md:mb-4 px-2 md:px-4">
             <span className="text-purple-900 font-extrabold flex items-center gap-2 text-sm md:text-lg">
@@ -601,10 +592,10 @@ const App = () => {
             </span>
             <span className="text-purple-900 font-black text-lg md:text-2xl font-mono">{progressPercent}%</span>
           </div>
-          
+
           <div className="w-full bg-gray-200 h-4 md:h-6 rounded-full overflow-visible border-2 border-gray-300 relative mb-8 mt-4">
             <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-full h-[2px] border-t-2 border-dashed border-gray-400/50"></div>
+              <div className="w-full h-[2px] border-t-2 border-dashed border-gray-400/50"></div>
             </div>
             <div className="h-full bg-purple-500 rounded-l-full transition-all duration-1000 ease-out relative" style={{ width: `${progressPercent}%` }}>
               <div className="absolute -right-3 -top-3 md:-top-4 text-purple-700 drop-shadow-xl transform translate-x-1/2 z-10">
@@ -631,7 +622,7 @@ const App = () => {
               </div>
             </div>
           </div>
-          
+
           <div className="absolute top-2 right-4 flex items-center gap-1 text-[9px] font-bold text-green-600">
             {syncing ? <><Icons.Loader2 size={10} className="animate-spin" /> 저장 중...</> : <><Icons.Wifi size={10} /> Online</>}
           </div>
@@ -644,22 +635,22 @@ const App = () => {
         </div>
       </header>
 
-      {/* Grid Layout */}
       <main className="max-w-7xl mx-auto px-1">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3 md:gap-6">
           {calendarData.map((item, index) => {
             const isRev = revealedDays[index];
             const isComp = completedDays[index];
-            const isClickable = index === 0 || completedDays[index - 1];
-            
+            const isToday = item.date === todayMonthDay;
+            const isClickable = isRev || isToday;
+
             if (!isRev) {
               return (
-                <div 
+                <div
                   key={index}
                   onClick={() => handleDayClick(index)}
                   className={`
                     relative cursor-pointer transition-all duration-300 ease-out transform
-                    ${!isClickable ? 'opacity-60 grayscale' : 'hover:-translate-y-1 hover:shadow-2xl active:scale-95'}
+                    ${!isClickable ? "opacity-60 grayscale" : "hover:-translate-y-1 hover:shadow-2xl active:scale-95"}
                     rounded-lg md:rounded-xl p-0 min-h-[160px] md:min-h-[220px] flex flex-col shadow-lg overflow-hidden
                     bg-[#2c1a4d] border-r-4 border-b-4 border-[#1c1033]
                   `}
@@ -669,20 +660,20 @@ const App = () => {
                       {item.date}
                     </div>
                     <div className="mt-2">
-                        <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">대한민국</p>
-                        <p className="text-[6px] md:text-[8px] font-serif tracking-tighter opacity-80 mt-0.5">REPUBLIC OF KOREA</p>
+                      <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">대한민국</p>
+                      <p className="text-[6px] md:text-[8px] font-serif tracking-tighter opacity-80 mt-0.5">REPUBLIC OF KOREA</p>
                     </div>
                     <div className="my-2 opacity-90">
-                        <Icons.KoreaEmblem size={48} className="md:w-[60px] md:h-[60px] text-[#e3c4ff]" />
+                      <Icons.KoreaEmblem size={48} className="md:w-[60px] md:h-[60px] text-[#e3c4ff]" />
                     </div>
                     <div className="mb-2">
-                        <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">여권</p>
-                        <p className="text-[6px] md:text-[8px] font-serif tracking-wider opacity-80 mt-0.5">PASSPORT</p>
+                      <p className="text-[10px] md:text-xs font-serif font-bold tracking-widest">여권</p>
+                      <p className="text-[6px] md:text-[8px] font-serif tracking-wider opacity-80 mt-0.5">PASSPORT</p>
                     </div>
                     {!isClickable && (
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                            <Icons.Lock size={24} className="text-white/70" />
-                        </div>
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <Icons.Lock size={24} className="text-white/70" />
+                      </div>
                     )}
                   </div>
                   <div className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#140b24] opacity-50"></div>
@@ -691,59 +682,60 @@ const App = () => {
             }
 
             return (
-              <div 
+              <div
                 key={index}
-                onClick={() => handleDayClick(index)}
-                className={`
-                  relative cursor-pointer transition-all duration-300 ease-out
-                  rounded-xl md:rounded-2xl p-0 min-h-[160px] md:min-h-[220px] flex flex-col shadow-lg md:shadow-xl overflow-hidden
-                  bg-[#fdfbf7] border border-gray-200
-                `}
+                className="relative rounded-xl md:rounded-2xl p-0 min-h-[160px] md:min-h-[220px] flex flex-col shadow-lg md:shadow-xl overflow-hidden bg-[#fdfbf7] border border-gray-200"
               >
-                <div className={`
+                <div
+                  className={`
                     h-8 md:h-10 w-full flex items-center justify-between px-3 text-white font-bold text-xs md:text-sm uppercase tracking-widest border-b-2 border-dashed border-white/30
-                    ${item.type === 'sun' ? 'bg-purple-500' : 
-                      item.type === 'holy' ? 'bg-purple-800' : 
-                      'bg-purple-700'}
-                `}>
-                    <span>VISA</span>
-                    <span>{item.date}</span>
+                    ${item.type === "sun" ? "bg-purple-500" : item.type === "holy" ? "bg-purple-800" : "bg-purple-700"}
+                  `}
+                >
+                  <span>VISA</span>
+                  <span>{item.date}</span>
                 </div>
 
                 <div className="flex-grow p-3 md:p-4 flex flex-col items-center justify-between relative bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')]">
                   <div className="absolute inset-0 flex items-center justify-center opacity-[0.07] pointer-events-none">
-                      <Icons.KoreaEmblem size={120} />
+                    <Icons.KoreaEmblem size={120} />
                   </div>
+
                   <div className="z-10 text-center w-full mt-1">
-                        <p className="text-xs md:text-base font-black text-slate-800 break-keep leading-tight mb-3 font-serif">
-                            {item.text}
-                        </p>
-                        <div className="w-full h-[1px] bg-gray-300 mb-3 border-t border-gray-200 border-dotted"></div>
-                        <div className="flex flex-col gap-1.5 w-full">
-                            {item.verse && (
-                                <button 
-                                onClick={(e) => openVersePopup(e, item)}
-                                className="w-full bg-white/80 border border-purple-200 text-purple-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-purple-50 font-bold flex items-center justify-center gap-1 backdrop-blur-sm"
-                                >
-                                <Icons.Ticket size={12} /> 탑승권({item.verse})
-                                </button>
-                            )}
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); generatePrayer(item, index); }}
-                                disabled={aiLocked}
-                                className="w-full bg-purple-50/80 border border-purple-200 text-purple-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-purple-100 font-bold flex items-center justify-center gap-1 backdrop-blur-sm disabled:opacity-60"
-                            >
-                                <Icons.Headset size={12} /> 오늘의 기도
-                            </button>
-                        </div>
+                    <p className="text-xs md:text-base font-black text-slate-800 break-keep leading-tight mb-3 font-serif">
+                      {item.text}
+                    </p>
+                    <div className="w-full h-[1px] bg-gray-300 mb-3 border-t border-gray-200 border-dotted"></div>
+                    <div className="flex flex-col gap-1.5 w-full">
+                      {item.verse && (
+                        <button
+                          onClick={(e) => openVersePopup(e, item)}
+                          className="w-full bg-white/80 border border-purple-200 text-purple-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-purple-50 font-bold flex items-center justify-center gap-1 backdrop-blur-sm"
+                        >
+                          <Icons.Ticket size={12} /> 탑승권({item.verse})
+                        </button>
+                      )}
+                      {item.prayer && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            generatePrayer(item, index);
+                          }}
+                          className="w-full bg-purple-50/80 border border-purple-200 text-purple-900 text-[10px] md:text-xs py-1.5 rounded shadow-sm hover:bg-purple-100 font-bold flex items-center justify-center gap-1 backdrop-blur-sm"
+                        >
+                          <Icons.Headset size={12} /> 오늘의 기도
+                        </button>
+                      )}
                     </div>
+                  </div>
 
                   {isComp && (
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-15deg] border-4 border-double border-purple-600/70 rounded-full px-2 py-2 text-purple-600/70 font-black text-xs md:text-sm uppercase tracking-widest z-20 pointer-events-none animate-in zoom-in duration-300 bg-white/10 backdrop-blur-[1px] w-20 h-20 flex items-center justify-center shadow-sm">
-                        <div className="text-center leading-none">
-                            DEPARTED<br/>
-                            <span className="text-[8px]">{item.date}</span>
-                        </div>
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-15deg] border-4 border-double border-purple-600/70 rounded-full px-2 py-2 text-purple-600/70 font-black text-xs md:text-sm uppercase tracking-widest z-20 pointer-events-none bg-white/10 backdrop-blur-[1px] w-24 h-24 flex items-center justify-center shadow-sm">
+                      <div className="text-center leading-none">
+                        DEPARTED<br />
+                        <span className="text-[8px]">{item.date}</span><br />
+                        {completedAtTimes[index]?.time24 && <span className="text-[8px]">{completedAtTimes[index].time24}</span>}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -753,16 +745,15 @@ const App = () => {
         </div>
       </main>
 
-      {/* Bible Modal */}
       {selectedVerse && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-[#fdfbf7] rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden border-[10px] border-purple-900 relative">
             <div className="bg-purple-900 p-4 flex justify-between items-center text-white border-b-4 border-purple-300">
               <div className="flex items-center gap-3">
                 <Icons.Ticket size={24} className="text-purple-300" />
                 <div>
-                    <h3 className="text-sm font-light text-purple-200 uppercase tracking-widest">Boarding Pass</h3>
-                    <h2 className="text-xl font-black">오늘의 말씀</h2>
+                  <h3 className="text-sm font-light text-purple-200 uppercase tracking-widest">Boarding Pass</h3>
+                  <h2 className="text-xl font-black">오늘의 말씀</h2>
                 </div>
               </div>
               <button onClick={() => setSelectedVerse(null)} className="p-1 hover:rotate-90 transition-transform"><Icons.X size={28} /></button>
@@ -770,34 +761,34 @@ const App = () => {
 
             <div className="p-6 md:p-10 text-center relative">
               <p className="text-lg md:text-2xl font-black text-slate-800 leading-snug mb-6 break-keep px-4 font-serif italic">
-                "{String(selectedVerse.fullVerse).split(' (')[0]}"
+                "{String(selectedVerse.fullVerse)}"
               </p>
               <div className="inline-block px-6 py-2 bg-purple-100 text-purple-900 rounded-full font-black text-sm md:text-lg border border-purple-200 mb-8">
                 GATE: {selectedVerse.verse}
               </div>
-              
+
               <div className="mt-2 p-4 bg-gray-100 rounded-xl border border-gray-200 text-left">
                 <p className="text-xs font-bold text-gray-500 mb-2 flex items-center gap-2 uppercase tracking-wide">
                   <Icons.Info size={14} /> Information Desk
                 </p>
                 <div className="flex gap-2">
-                  <input 
+                  <input
                     type="text"
                     value={question}
                     onChange={(e) => setQuestion(e.target.value)}
                     placeholder="말씀에 대해 궁금한 점을 물어보세요"
                     className="flex-grow p-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:border-purple-500"
                   />
-                  <button 
+                  <button
                     onClick={() => askQuestion(selectedVerse)}
-                    disabled={aiLocked}
+                    disabled={aiLocked || remainingQ <= 0}
                     className="bg-purple-600 text-white p-3 rounded-lg hover:bg-purple-700 disabled:opacity-50 font-bold"
                   >
                     {loading ? <Icons.Loader2 className="animate-spin" size={20} /> : "전송"}
                   </button>
                 </div>
                 <p className="mt-2 text-xs text-purple-600 font-bold">
-                  남은 질문 횟수: {remainingQuestion}회
+                  오늘 AI 질문 남은 횟수: {remainingQ}회
                 </p>
               </div>
             </div>
@@ -805,16 +796,23 @@ const App = () => {
         </div>
       )}
 
-      {/* Result Modal */}
       {result && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden border-8 border-purple-900 transform animate-in zoom-in duration-300">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden border-8 border-purple-900">
             <div className="bg-purple-900 p-4 flex justify-between items-center text-white">
               <div className="flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-purple-300 animate-pulse"></div>
                 <h3 className="text-lg font-bold tracking-widest uppercase">{String(result.title)}</h3>
               </div>
-              <button onClick={() => { setResult(null); setPendingCompleteIndex(null); }} className="text-purple-200 hover:text-white"><Icons.X size={24} /></button>
+              <button
+                onClick={() => {
+                  setResult(null);
+                  setPendingCompleteIndex(null);
+                }}
+                className="text-purple-200 hover:text-white"
+              >
+                <Icons.X size={24} />
+              </button>
             </div>
             <div className="p-8 bg-purple-50 text-center">
               <div className="bg-white p-6 rounded-xl border border-purple-100 shadow-sm mb-6 max-h-[300px] overflow-y-auto">
@@ -822,9 +820,9 @@ const App = () => {
                   {String(result.content)}
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => {
-                  if (result.type === 'prayer') {
+                  if (result.type === "prayer") {
                     markCompleted(pendingCompleteIndex);
                     setPendingCompleteIndex(null);
                   }
@@ -832,41 +830,37 @@ const App = () => {
                 }}
                 className="w-full bg-purple-600 text-white py-4 rounded-xl text-lg font-black shadow-lg hover:bg-purple-700 transition-all active:scale-95"
               >
-                {result.type === 'prayer' ? "아멘" : "확인 완료"}
+                {result.type === "prayer" ? "아멘" : "확인 완료"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Global Loading Overlay */}
       {loading && !result && (
         <div className="fixed inset-0 z-[200] bg-purple-900/40 backdrop-blur-md flex flex-col items-center justify-center p-6">
           <div className="relative">
             <div className="absolute inset-0 border-4 border-dashed border-white/30 rounded-full animate-[spin_4s_linear_infinite]"></div>
             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-2xl">
-                <Icons.Loader2 size={40} className="text-purple-500 animate-spin" />
+              <Icons.Loader2 size={40} className="text-purple-500 animate-spin" />
             </div>
           </div>
-          <p className="mt-8 text-xl font-black text-white drop-shadow-md text-center">
-            {String(loadingText)}
-          </p>
+          <p className="mt-8 text-xl font-black text-white drop-shadow-md text-center">{String(loadingText)}</p>
         </div>
       )}
 
-      {/* Intro Overlay */}
       {showIntro && (
         <div className="fixed inset-0 z-[110] bg-purple-900/90 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="max-w-md w-full bg-white rounded-3xl overflow-hidden shadow-2xl relative">
             <div className="bg-purple-600 p-8 text-center text-white relative overflow-hidden">
-                <Icons.PlaneTakeoff size={48} className="mx-auto mb-4 relative z-10" />
-                <h2 className="text-2xl font-black relative z-10">환영합니다, 승객 여러분!</h2>
+              <Icons.PlaneTakeoff size={48} className="mx-auto mb-4 relative z-10" />
+              <h2 className="text-2xl font-black relative z-10">환영합니다, 승객 여러분!</h2>
             </div>
             <div className="p-8 pt-2 bg-white text-center">
               <p className="text-gray-600 mb-6 font-bold leading-relaxed">
-                예수님과 함께하는 <span className="text-purple-600">40일간의 말씀 여행</span>을<br/>시작할 준비가 되셨나요?
+                예수님과 함께하는 <span className="text-purple-600">40일간의 천국 여행</span>을<br />시작할 준비가 되셨나요?
               </p>
-              <button 
+              <button
                 onClick={() => setShowIntro(false)}
                 className="w-full bg-purple-900 text-white py-4 rounded-xl text-xl font-black shadow-xl transition-transform active:scale-95 flex items-center justify-center gap-2"
               >
@@ -882,11 +876,11 @@ const App = () => {
           <Icons.Printer size={18} />
           <span className="text-[9px] font-bold mt-0.5">티켓 출력</span>
         </button>
-        
+
         <div className="flex flex-col items-center">
           <div className="flex items-center gap-1">
-             <Icons.Stamp size={14} className="text-purple-500" />
-             <span className="text-lg font-black text-purple-900">{completedCount}</span>
+            <Icons.Stamp size={14} className="text-purple-500" />
+            <span className="text-lg font-black text-purple-900">{completedCount}</span>
           </div>
           <span className="text-[9px] font-bold text-gray-400 uppercase">Stamps Collected</span>
         </div>
@@ -897,16 +891,20 @@ const App = () => {
         </button>
       </footer>
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&display=swap');
-        body { font-family: 'Gaegu', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .break-keep { word-break: keep-all; }
-        @media print {
-          .fixed, footer, .no-print, .absolute { display: none !important; }
-          body { background: white !important; padding: 0 !important; }
-          .grid { grid-template-cols: repeat(4, 1fr) !important; gap: 10px !important; }
-        }
-      `}} />
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @import url('https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&display=swap');
+            body { font-family: 'Gaegu', sans-serif; -webkit-tap-highlight-color: transparent; }
+            .break-keep { word-break: keep-all; }
+            @media print {
+              .fixed, footer, .no-print, .absolute { display: none !important; }
+              body { background: white !important; padding: 0 !important; }
+              .grid { grid-template-cols: repeat(4, 1fr) !important; gap: 10px !important; }
+            }
+          `
+        }}
+      />
     </div>
   );
 };
